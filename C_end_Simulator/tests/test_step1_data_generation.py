@@ -16,7 +16,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 import numpy as np
-import pytest
+import tests
 
 from engine.models.dog_profile import DogProfile
 from engine.models.smart_collar import SmartCollar

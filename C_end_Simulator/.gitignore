@@ -68,3 +68,5 @@ output_data/realtime_stream.jsonl
 output_data/engine_status.json
 output_data/offline_cache/*.json
 output_data/audit_logs/*.log
+
+C_end_Simulator/output_data/*.jsonl
