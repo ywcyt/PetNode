@@ -119,7 +119,7 @@ class SmartCollar:
     start_time : datetime
         模拟起始时间
     tick_interval : timedelta
-        每 tick 推进的模拟时间（默认 1 分钟）
+        每 tick 推进的模拟时间（默认 15 分钟）
     seed : int | None
         随机种子（可复现）
     """
@@ -128,7 +128,7 @@ class SmartCollar:
         self,
         profile: Optional[DogProfile] = None,
         start_time: Optional[datetime] = None,
-        tick_interval: timedelta = timedelta(minutes=1),
+        tick_interval: timedelta = timedelta(minutes=15),
         seed: Optional[int] = None,
     ) -> None:
         self._rng = np.random.default_rng(seed)
