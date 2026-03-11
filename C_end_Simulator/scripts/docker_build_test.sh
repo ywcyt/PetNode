@@ -51,13 +51,10 @@ echo ""
 
 # ── Step 1: 构建 engine 镜像 ──
 echo -e "${YELLOW}[Step 1/4] 构建 engine 镜像...${NC}"
-docker build \
+if docker build \
     -f engine/Dockerfile \
     -t petnode-engine:latest \
-    . \
-    2>&1
-
-if [ $? -eq 0 ]; then
+    . ; then
     echo -e "${GREEN}✓ engine 镜像构建成功${NC}"
 else
     echo -e "${RED}✗ engine 镜像构建失败${NC}"
@@ -72,15 +69,18 @@ echo -e "${YELLOW}[Step 2/4] 运行 engine 容器测试...${NC}"
 TEST_OUTPUT_DIR=$(mktemp -d)
 echo "  临时输出目录: ${TEST_OUTPUT_DIR}"
 
-docker run --rm \
+if ! docker run --rm \
     -v "${TEST_OUTPUT_DIR}:/app/output_data" \
     petnode-engine:latest \
     --dogs 2 \
     --ticks 20 \
     --interval 0 \
     --seed 42 \
-    --output-dir /app/output_data \
-    2>&1
+    --output-dir /app/output_data ; then
+    echo -e "${RED}✗ engine 容器运行失败${NC}"
+    rm -rf "${TEST_OUTPUT_DIR}"
+    exit 1
+fi
 
 # 验证输出文件
 JSONL_FILE="${TEST_OUTPUT_DIR}/realtime_stream.jsonl"
