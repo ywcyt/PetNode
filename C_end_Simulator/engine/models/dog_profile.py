@@ -29,6 +29,7 @@ class DogProfile:
 
     每只狗在创建时确定如下信息：
       - dog_id       : 唯一标识符（默认取 uuid4 前 12 位十六进制字符）
+      - user_id      : 所属用户标识（一个用户可拥有多条狗）
       - breed_size   : 体型大小（small / medium / large）
       - age_stage    : 年龄阶段（puppy / adult / senior）
       - traits       : 慢性体质特质列表（0~2 个，来自 CardiacRisk / RespiratoryRisk / OrthoRisk）
@@ -39,6 +40,7 @@ class DogProfile:
     """
 
     dog_id: str = ""
+    user_id: str = ""                   # 所属用户 ID（一个用户可拥有多条狗）
     breed_size: str = "medium"          # small / medium / large
     age_stage: str = "adult"            # puppy / adult / senior
     traits: list[BaseTrait] = field(default_factory=list)
@@ -49,6 +51,9 @@ class DogProfile:
         # 如果没有指定 dog_id，则自动生成一个 12 位的十六进制唯一标识
         if not self.dog_id:
             self.dog_id = uuid.uuid4().hex[:12]
+        # 如果没有指定 user_id，则自动生成一个 8 位的十六进制唯一标识
+        if not self.user_id:
+            self.user_id = "user_" + uuid.uuid4().hex[:8]
 
     # ---------- 汇总 trait 提供的修正 ----------
     # 以下 property 将所有 trait 对基线指标的影响进行汇总：
@@ -97,6 +102,7 @@ class DogProfile:
     @staticmethod
     def random_profile(
         rng: Optional[np.random.Generator] = None,
+        user_id: str = "",
     ) -> DogProfile:
         """随机生成一个 DogProfile（含 0~2 个 trait）"""
         if rng is None:
@@ -116,6 +122,7 @@ class DogProfile:
         traits = [_TRAIT_POOL[i]() for i in chosen_indices]
 
         return DogProfile(
+            user_id=user_id,
             breed_size=str(breed),
             age_stage=str(age),
             traits=traits,
@@ -124,6 +131,6 @@ class DogProfile:
     def __repr__(self) -> str:
         trait_names = [t.name for t in self.traits]
         return (
-            f"DogProfile(id={self.dog_id}, breed={self.breed_size}, "
-            f"age={self.age_stage}, traits={trait_names})"
+            f"DogProfile(id={self.dog_id}, user={self.user_id}, "
+            f"breed={self.breed_size}, age={self.age_stage}, traits={trait_names})"
         )

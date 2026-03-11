@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from engine.exporters.base_exporter import BaseExporter
@@ -53,24 +54,29 @@ class FileExporter(BaseExporter):
         self._filepath = self._output_dir / filename
         # 以追加模式打开文件（不覆盖已有数据）
         self._file = open(self._filepath, "a", encoding="utf-8")
+        # 线程锁，用于多线程并发写入时保护文件操作
+        self._lock = threading.Lock()
 
     # ── BaseExporter 接口实现 ──
 
     def export(self, record: dict) -> None:
-        """将一条记录序列化为 JSON 并追加写入文件（每条一行，JSONL 格式）"""
+        """将一条记录序列化为 JSON 并追加写入文件（每条一行，JSONL 格式，线程安全）"""
         line = json.dumps(record, ensure_ascii=False)
-        self._file.write(line + "\n")
+        with self._lock:
+            self._file.write(line + "\n")
 
     def flush(self) -> None:
-        """强制将缓冲区数据写入磁盘（flush + fsync 确保数据持久化）"""
-        self._file.flush()
-        os.fsync(self._file.fileno())
+        """强制将缓冲区数据写入磁盘（flush + fsync 确保数据持久化，线程安全）"""
+        with self._lock:
+            self._file.flush()
+            os.fsync(self._file.fileno())
 
     def close(self) -> None:
-        """关闭文件句柄（可安全调用多次，幂等操作）"""
-        if not self._file.closed:
-            self._file.flush()
-            self._file.close()
+        """关闭文件句柄（可安全调用多次，幂等操作，线程安全）"""
+        with self._lock:
+            if not self._file.closed:
+                self._file.flush()
+                self._file.close()
 
     # ── 便利属性 ──
 

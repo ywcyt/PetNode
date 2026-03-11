@@ -126,7 +126,7 @@ class TestFileExporter:
 
         # 验证每行都可解析，且包含所有必需字段
         expected_keys = {
-            "device_id", "timestamp", "behavior", "heart_rate",
+            "user_id", "device_id", "timestamp", "behavior", "heart_rate",
             "resp_rate", "temperature", "steps", "battery",
             "gps_lat", "gps_lng", "event", "event_phase",
         }
