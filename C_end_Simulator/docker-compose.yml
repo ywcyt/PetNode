@@ -1,0 +1,32 @@
+services:
+  # ─────────── 核心引擎容器（后台常驻，持续生成数据）───────────
+  engine:
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+    container_name: petnode-engine
+    restart: unless-stopped
+    volumes:
+      # 将 output_data 挂载到宿主机，方便 TUI/GUI 读取
+      - ./output_data:/app/output_data
+    environment:
+      - PYTHONUNBUFFERED=1
+    # 默认参数：2 只狗，200 ticks，每 1 秒一轮，种子 42
+    command: ["--dogs", "2", "--ticks", "200", "--interval", "1", "--seed", "42", "--output-dir", "/app/output_data"]
+
+  # ─────────── TUI 终端监控界面容器（可选）───────────
+  # 当前 TUI 为骨架状态，仅作为编排占位
+  # 启动方式: docker compose up tui
+  tui:
+    build:
+      context: .
+      dockerfile: ui_tui/Dockerfile
+    container_name: petnode-tui
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./output_data:/app/output_data
+    depends_on:
+      - engine
+    profiles:
+      - tui
