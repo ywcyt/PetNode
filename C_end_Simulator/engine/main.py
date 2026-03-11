@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from pathlib import Path
 from typing import Optional
+import os
 
 from engine.models import DogProfile, SmartCollar
 from engine.exporters import FileExporter
@@ -262,7 +263,8 @@ def run(
 
     try:
         # 使用线程池并行生成数据——每个 tick 内，各只狗的记录在独立线程中并行生成
-        max_workers = max(num_dogs, 1)
+        max_workers = min(num_dogs, os.cpu_count() or 4)
+        max_workers = max(max_workers, 1)
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             for tick in range(num_ticks):
                 if stopped:
@@ -305,6 +307,7 @@ def run(
                     executor.submit(collar.generate_one_record)
                     for collar in collars
                 ]
+                # 收集各线程生成的记录（as_completed 在主线程中顺序回收结果）
                 for future in as_completed(futures):
                     record = future.result()
                     exporter.export(record)
