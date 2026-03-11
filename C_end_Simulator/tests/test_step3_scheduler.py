@@ -1,4 +1,17 @@
-"""Step 3 测试：验证调度器能串起 SmartCollar → FileExporter"""
+"""
+Step 3 测试：验证调度器能串起 SmartCollar → FileExporter
+
+测试范围（对应开发流程第三步）：
+  - parse_args     : 命令行参数解析（默认值和自定义值）
+  - command.json   : 控制指令读写（不存在/空文件/合法/非法 JSON）
+  - engine_status  : 引擎状态文件写入
+  - BaseListener   : 抽象类不可直接实例化
+  - DummyListener  : poll 返回 None、close 幂等、repr
+  - run() 调度器   : 单狗/多狗记录数、字段完整性、JSONL 输出、
+                     engine_status 创建、stop 指令处理、
+                     多狗 device_id 唯一性、随机种子可复现性、
+                     零 ticks 边界情况
+"""
 
 from __future__ import annotations
 
@@ -16,7 +29,10 @@ from engine.listeners.dummy_listener import DummyListener
 # ────────── parse_args 测试 ──────────
 
 class TestParseArgs:
+    """测试命令行参数解析的默认值和自定义值"""
+
     def test_defaults(self):
+        """不传参时应使用默认值：1 只狗、100 ticks、1 分钟/tick、0 间隔"""
         args = parse_args([])
         assert args.dogs == 1
         assert args.ticks == 100
@@ -27,6 +43,7 @@ class TestParseArgs:
         assert args.log_level == "INFO"
 
     def test_custom_args(self):
+        """自定义参数应被正确解析"""
         args = parse_args([
             "--dogs", "3",
             "--ticks", "50",
@@ -48,6 +65,7 @@ class TestParseArgs:
 # ────────── command.json 测试 ──────────
 
 class TestCommandJson:
+    """测试 command.json 控制指令的读写功能（引擎与 UI 之间的通信机制）"""
     def test_read_no_file(self, tmp_path: Path):
         """不存在 command.json 时返回 None"""
         assert read_command(tmp_path) is None
@@ -85,6 +103,7 @@ class TestCommandJson:
 # ────────── BaseListener 测试 ──────────
 
 class TestBaseListener:
+    """验证 BaseListener 作为抽象基类不能直接实例化"""
     def test_cannot_instantiate(self):
         """BaseListener 是抽象类，不能直接实例化"""
         with pytest.raises(TypeError):
@@ -94,6 +113,7 @@ class TestBaseListener:
 # ────────── DummyListener 测试 ──────────
 
 class TestDummyListener:
+    """测试 DummyListener 的占位行为（poll 返回 None、close 幂等）"""
     def test_poll_returns_none(self):
         """DummyListener.poll() 应返回 None"""
         listener = DummyListener()
@@ -113,6 +133,19 @@ class TestDummyListener:
 # ────────── run() 调度器集成测试 ──────────
 
 class TestSchedulerRun:
+    """
+    调度器集成测试——验证 run() 函数能正确串联 SmartCollar → FileExporter 的完整流程。
+
+    测试维度：
+      - 记录数量正确性（单狗/多狗 × ticks 数）
+      - 记录字段完整性
+      - JSONL 输出文件创建和内容合法性
+      - engine_status.json 状态记录
+      - command.json stop 指令处理
+      - 多狗 device_id 唯一性
+      - 随机种子可复现性
+      - 边界情况（0 ticks）
+    """
     def test_single_dog_generates_records(self, tmp_path: Path):
         """1 只狗、10 ticks 应产出 10 条记录"""
         records = run(

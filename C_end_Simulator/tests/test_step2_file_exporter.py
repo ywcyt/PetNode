@@ -1,4 +1,12 @@
-"""Step 2 测试：验证数据能正确写入文件"""
+"""
+Step 2 测试：验证数据能正确写入文件
+
+测试范围（对应开发流程第二步）：
+  - BaseExporter  : 抽象类不可直接实例化
+  - FileExporter  : JSONL 文件创建、写入格式正确性、追加模式、
+                    flush 持久化、自定义文件名、自动创建目录、
+                    与 SmartCollar 的集成、close 幂等性
+"""
 
 from __future__ import annotations
 
@@ -17,6 +25,8 @@ from engine.models.smart_collar import SmartCollar
 # ────────── BaseExporter 测试 ──────────
 
 class TestBaseExporter:
+    """验证 BaseExporter 作为抽象基类不能直接实例化"""
+
     def test_cannot_instantiate(self):
         """BaseExporter 是抽象类，不能直接实例化"""
         with pytest.raises(TypeError):
@@ -26,6 +36,12 @@ class TestBaseExporter:
 # ────────── FileExporter 测试 ──────────
 
 class TestFileExporter:
+    """
+    验证 FileExporter 的 JSONL 文件写入功能。
+
+    包括：文件创建、写入格式、追加模式、flush 持久化、
+    自定义文件名、自动创建目录、与 SmartCollar 集成、close 幂等。
+    """
     def test_export_creates_file(self, tmp_path: Path):
         """export() 应该创建 JSONL 文件"""
         exporter = FileExporter(output_dir=tmp_path)

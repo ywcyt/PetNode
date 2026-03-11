@@ -33,11 +33,14 @@ from engine.listeners import DummyListener
 
 # ────────────────── 日志 ──────────────────
 
+# 统一使用 "engine" 命名空间的日志器
 logger = logging.getLogger("engine")
 
 # ────────────────── 常量 ──────────────────
 
+# 默认输出目录：C_end_Simulator/output_data/
 _DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output_data"
+# 控制指令文件名（TUI/GUI 写指令 → Engine 读指令）
 _COMMAND_FILE = "command.json"
 
 # ────────────────── 指令读取 ──────────────────
@@ -102,6 +105,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ----------
     argv : list[str] | None
         参数列表，默认读取 sys.argv
+
+    支持的参数：
+      --dogs          模拟的狗数量（默认 1）
+      --ticks         每只狗生成的 tick 总数（默认 100）
+      --tick-minutes  每个 tick 对应的模拟时间分钟数（默认 1）
+      --interval      每轮 tick 之间的真实等待秒数（默认 0，即尽快跑完）
+      --seed          随机种子（用于可复现模拟）
+      --output-dir    输出目录（默认 output_data/）
+      --log-level     日志级别（默认 INFO）
     """
     parser = argparse.ArgumentParser(
         description="PetNode C端 智能项圈数据模拟引擎",
@@ -175,7 +187,8 @@ def run(
     out_path = Path(output_dir) if output_dir else _DEFAULT_OUTPUT_DIR
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # ── 创建项圈 ──
+    # ── 创建项圈（SmartCollar 实例）──
+    # 每只狗使用 (seed + i) 作为随机种子，确保不同狗有不同的随机序列但整体可复现
     collars: list[SmartCollar] = []
     for i in range(num_dogs):
         dog_seed = (seed + i) if seed is not None else None
@@ -186,15 +199,18 @@ def run(
         collars.append(collar)
         logger.info("项圈 #%d 已创建: %s", i + 1, collar.profile)
 
-    # ── 创建 exporter ──
+    # ── 创建 exporter（数据导出器）──
+    # 当前阶段使用 FileExporter，将数据写入本地 JSONL 文件
     exporter = FileExporter(output_dir=out_path)
     logger.info("FileExporter 已就绪: %s", exporter.filepath)
 
-    # ── 创建 listener ──
+    # ── 创建 listener（指令监听器）──
+    # 当前阶段使用 DummyListener，不连接任何远程服务器
     listener = DummyListener()
     logger.info("DummyListener 已注册")
 
     # ── 写入初始引擎状态 ──
+    # engine_status.json 让 TUI/GUI 知道引擎的运行状态
     write_engine_status(out_path, {
         "running": True,
         "num_dogs": num_dogs,
@@ -204,6 +220,7 @@ def run(
     })
 
     # ── 优雅退出标志 ──
+    # 收到 SIGINT (Ctrl-C) 或 SIGTERM 时设置 stopped=True，主循环检测后优雅退出
     stopped = False
 
     def _signal_handler(signum: int, frame: object) -> None:
@@ -215,6 +232,7 @@ def run(
     signal.signal(signal.SIGTERM, _signal_handler)
 
     # ── 主循环 ──
+    # 每个 tick：轮询指令 → 生成数据 → 导出到文件 → 等待间隔
     all_records: list[dict] = []
     paused = False
 
@@ -224,7 +242,7 @@ def run(
                 logger.info("引擎被中断，已完成 %d/%d ticks", tick, num_ticks)
                 break
 
-            # 轮询 command.json
+            # 轮询 command.json 读取控制指令（stop/pause/resume/set_interval）
             cmd = read_command(out_path)
             if cmd is not None:
                 action = cmd.get("action")
@@ -239,31 +257,32 @@ def run(
                     paused = False
                     logger.info("收到 resume 指令，恢复模拟")
                 elif action == "set_interval":
+                    # 动态调整每轮 tick 之间的真实等待时间
                     new_interval = cmd.get("value")
                     if isinstance(new_interval, (int, float)) and new_interval >= 0:
                         real_interval = float(new_interval)
                         logger.info("实时间隔已更新为 %.2f 秒", real_interval)
 
-            # 暂停状态下跳过生成
+            # 暂停状态下跳过数据生成，但仍保持等待循环
             if paused:
                 if real_interval > 0:
                     time.sleep(real_interval)
                 continue
 
-            # 轮询 listener
+            # 轮询 listener（当前阶段为空操作）
             listener.poll()
 
-            # 生成数据并导出
+            # 遍历所有项圈，生成数据并导出
             for collar in collars:
                 record = collar.generate_one_record()
                 exporter.export(record)
                 all_records.append(record)
 
-            # 定期 flush（每 10 ticks 或最后一个 tick）
+            # 定期 flush 确保数据持久化（每 10 ticks 或最后一个 tick）
             if (tick + 1) % 10 == 0 or tick == num_ticks - 1:
                 exporter.flush()
 
-            # 更新引擎状态
+            # 定期更新引擎状态文件（每 50 ticks 或最后一个 tick）
             if (tick + 1) % 50 == 0 or tick == num_ticks - 1:
                 write_engine_status(out_path, {
                     "running": True,
@@ -273,22 +292,23 @@ def run(
                     "current_tick": tick + 1,
                 })
 
-            # 日志
+            # 进度日志（每 50 ticks 打印一次）
             if (tick + 1) % 50 == 0:
                 logger.info(
                     "进度: %d/%d ticks 完成 (%d 条记录)",
                     tick + 1, num_ticks, len(all_records),
                 )
 
-            # 真实间隔等待
+            # 真实间隔等待（interval=0 表示尽快跑完，不等待）
             if real_interval > 0:
                 time.sleep(real_interval)
 
     finally:
-        # ── 清理 ──
+        # ── 清理：无论正常结束还是异常退出，都确保资源被释放 ──
         exporter.flush()
         exporter.close()
         listener.close()
+        # 写入最终引擎状态（running=False）
         write_engine_status(out_path, {
             "running": False,
             "num_dogs": num_dogs,
@@ -308,10 +328,17 @@ def run(
 
 
 def main(argv: list[str] | None = None) -> None:
-    """CLI 入口"""
+    """
+    CLI 入口——解析命令行参数并启动模拟引擎。
+
+    典型用法：
+        python -m engine.main                          # 默认 1 只狗, 100 ticks
+        python -m engine.main --dogs 3 --ticks 500     # 3 只狗, 500 ticks
+        python -m engine.main --seed 42 --interval 2   # 可复现, 每 2 秒一轮
+    """
     args = parse_args(argv)
 
-    # 配置日志
+    # 配置日志格式和级别
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -324,6 +351,7 @@ def main(argv: list[str] | None = None) -> None:
         args.dogs, args.ticks, args.tick_minutes, args.interval, args.seed,
     )
 
+    # 调用核心调度函数
     run(
         num_dogs=args.dogs,
         num_ticks=args.ticks,
