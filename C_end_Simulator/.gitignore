@@ -60,3 +60,5 @@ Desktop.ini
 # MyPy cache
 .mypy_cache/
 
+# Pytest cache
+.pytest_cache/
