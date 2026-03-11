@@ -86,7 +86,7 @@ class LoginScreen(Screen):
         height: auto;
         border: round $primary;
         padding: 1 2;
-        margin: 0 auto;
+        margin: 0 5;
     }
 
     #login-title {
