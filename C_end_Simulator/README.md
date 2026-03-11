@@ -2,96 +2,105 @@
 
 ---
 
-这是我们小组的狗项圈数据生成器，主要会生成一些数据，来模拟狗项圈检测到的
+这是 PetNode 项目的 **C端（客户端）** 子系统——智能狗项圈数据模拟器。它负责模拟智能宠物项圈在真实场景中采集到的各类数据（心率、呼吸、体温、步数、GPS 等），并通过文件系统与 TUI/GUI 界面交互，实现数据展示和引擎控制。
 
 ## 架构设计
 
-我们考虑的**架构** 是:
+以下是完整的项目目录结构：
 ```
-C_end_Simulator/                        <-- 第一阶段大目录 (在总项目的 Git 管理下)
+C_end_Simulator/                        <-- C端模拟器根目录（在总项目的 Git 管理下）
 │
-├── .gitignore                          <-- 忽略 venv、__pycache__、.idea 等
-├── docker-compose.yml                  <-- 新增：编排容器
-├── README.md                           <-- 描述本仓库
+├── .gitignore                          <-- Git 忽略规则（venv、__pycache__、.idea、运行时数据文件等）
+├── docker-compose.yml                  <-- Docker 编排配置（engine + tui 两个服务的定义与卷映射）
+├── pytest.ini                          <-- pytest 测试框架配置（自定义 marker: docker）
+├── README.md                           <-- 本文档
 │
-├── output_data/
-│   ├── command.json                    <-- 【新增：控制总线】TUI 往这里写指令(如开启/停止)，Engine 从这里读指令
-│   ├── realtime_stream.jsonl           <-- ✅【给 UI 看的】实时热数据（FileExporter 追加写入 JSONL）
-│   ├── engine_status.json              <-- 【状态机】记录 Docker 引擎的死活、当前网络状态
+├── scripts/
+│   └── docker_build_test.sh            <-- Docker 构建与验证脚本（自动化测试镜像构建和容器运行）
+│
+├── output_data/                        <-- 【数据交换目录】Engine、TUI、GUI 通过此目录通信
+│   ├── command.json                    <-- 【控制总线】TUI/GUI 往这里写指令 → Engine 轮询读取并执行
+│   ├── realtime_stream.jsonl           <-- 【实时热数据】Engine 追加写入的 JSONL 格式数据流（给 UI 看的）
+│   ├── engine_status.json              <-- 【引擎状态】记录引擎的运行/停止状态和进度信息
 │   │
-│   ├── offline_cache/                  <-- 【断网急救包】积压的未发送数据
-│   │   ├── .gitkeep
-│   │   └── pending_1700001.json        <-- 网络断开时，堆积在这里的数据块
+│   ├── offline_cache/                  <-- 【断网急救包】🔮 未来阶段：网络断开时积压的未发送数据
+│   │   └── .gitkeep
 │   │
-│   └── audit_logs/                     <-- 【黑匣子】历史对账审计日志
-│       ├── .gitkeep
-│       ├── log_20231024.log            <-- 按天滚动的历史文件
-│       └── log_20231025.log
+│   └── audit_logs/                     <-- 【黑匣子】🔮 未来阶段：按天滚动的历史审计日志
+│       └── .gitkeep
 │
-├── engine/                             <-- 【核心一：打工人 (放进 Docker)】
-│   ├── Dockerfile                      <-- 镜像打包说明书
-│   ├── main.py                         <-- ✅ 核心调度器 (解析参数、管理队列、轮询 command.json)
+├── engine/                             <-- 【核心引擎：数据模拟 + 调度 (打包进 Docker)】
+│   ├── Dockerfile                      <-- Engine 容器镜像构建说明
+│   ├── requirements.txt                <-- Engine 依赖清单（numpy）
+│   ├── main.py                         <-- ✅ 核心调度器（解析参数、管理多线程、轮询 command.json）
 │   │
 │   ├── models/                         <-- ✅ [业务模型层]
 │   │   ├── __init__.py
-│   │   ├── dog_profile.py              <-- ✅ 狗的长期属性 (DogProfile)
-│   │   └── smart_collar.py             <-- ✅ 智能项圈类 (OOP 封装，产生模拟数据，默认 15min/tick)
+│   │   ├── dog_profile.py              <-- ✅ 狗的长期属性（DogProfile：体型、年龄、traits、GPS 基准）
+│   │   └── smart_collar.py             <-- ✅ 智能项圈类（OOP 封装，每 tick 产生一条模拟数据记录）
 │   │
 │   ├── traits/                         <-- ✅ [特质层：慢性病/体质修正]
 │   │   ├── __init__.py
-│   │   ├── base_trait.py               <-- ✅ 特质抽象基类
-│   │   ├── cardiac.py                  <-- ✅ CardiacRisk（心脏问题倾向）
-│   │   ├── respiratory.py              <-- ✅ RespiratoryRisk（呼吸道问题倾向）
-│   │   └── ortho.py                    <-- ✅ OrthoRisk（骨骼/关节问题倾向）
+│   │   ├── base_trait.py               <-- ✅ 特质抽象基类（5 组修正参数 + drift 慢性波动机制）
+│   │   ├── cardiac.py                  <-- ✅ CardiacRisk（心脏问题倾向：HR+10, 波动×1.2）
+│   │   ├── respiratory.py              <-- ✅ RespiratoryRisk（呼吸道问题倾向：RR+4, 波动×1.2）
+│   │   └── ortho.py                    <-- ✅ OrthoRisk（骨骼/关节问题倾向：步数×0.75, 受伤概率×2）
 │   │
 │   ├── events/                         <-- ✅ [事件层：疾病/受伤等长期事件]
 │   │   ├── __init__.py
-│   │   ├── base_event.py               <-- ✅ 事件抽象基类 + EventPhase
-│   │   ├── event_manager.py            <-- ✅ EventManager（按天推进事件）
-│   │   ├── fever.py                    <-- ✅ FeverEvent（发烧事件）
-│   │   └── injury.py                   <-- ✅ InjuryEvent（受伤事件）
+│   │   ├── base_event.py               <-- ✅ 事件抽象基类 + EventPhase（onset → peak → recovery）
+│   │   ├── event_manager.py            <-- ✅ EventManager（按天推进事件、按概率触发新事件）
+│   │   ├── fever.py                    <-- ✅ FeverEvent（发烧事件：体温+1.5°C、心率+15bpm）
+│   │   └── injury.py                   <-- ✅ InjuryEvent（受伤事件：步数≈0、GPS≈不动）
 │   │
 │   ├── exporters/                      <-- ✅ [数据输出层：策略模式]
 │   │   ├── __init__.py
-│   │   ├── base_exporter.py            <-- ✅ 定义通用发送接口 (BaseExporter ABC)
-│   │   ├── file_exporter.py            <-- ✅ 写入 output_data/ 的 JSONL 文件 (FileExporter)
-│   │   └── http_exporter.py            <-- 🔮 未来任务：发送给服务器 API (占位)
+│   │   ├── base_exporter.py            <-- ✅ 数据导出器抽象基类（BaseExporter ABC）
+│   │   ├── file_exporter.py            <-- ✅ 文件导出器（JSONL 追加写入 output_data/）
+│   │   └── http_exporter.py            <-- 🔮 未来占位：HTTP 上报至远程服务器 API
 │   │
-│   └── listeners/                      <-- [指令接收层：监听服务器]
+│   └── listeners/                      <-- [指令接收层：监听服务器下发指令]
 │       ├── __init__.py
-│       ├── base_listener.py            <-- ✅ 定义通用监听接口 (BaseListener ABC)
-│       ├── dummy_listener.py           <-- ✅ 假装在监听 (控制台打印空转)
-│       └── ws_listener.py              <-- 🔮 未来任务：WebSocket 接收控制指令 (占位)
+│       ├── base_listener.py            <-- ✅ 指令监听器抽象基类（BaseListener ABC）
+│       ├── dummy_listener.py           <-- ✅ 占位监听器（每次 poll() 返回 None，不连接任何服务器）
+│       └── ws_listener.py              <-- 🔮 未来占位：WebSocket 接收远程控制指令
 │
-├── tests/                              <-- ✅ [测试]
+├── tests/                              <-- ✅ [测试套件：按开发步骤分层组织]
 │   ├── __init__.py
-│   ├── test_step1_data_generation.py   <-- ✅ Step 1 测试：数据生成
-│   ├── test_step2_file_exporter.py     <-- ✅ Step 2 测试：文件导出
-│   └── test_step3_scheduler.py         <-- ✅ Step 3 测试：调度器集成
+│   ├── requirements.txt                <-- 测试依赖清单（pytest + numpy）
+│   ├── test_step1_data_generation.py   <-- ✅ Step 1：数据生成测试（Profile/Traits/Events/SmartCollar）
+│   ├── test_step2_file_exporter.py     <-- ✅ Step 2：文件导出测试（JSONL 写入与读取验证）
+│   ├── test_step3_scheduler.py         <-- ✅ Step 3：调度器集成测试（main.run() 端到端）
+│   ├── test_step4_docker_build.py      <-- ✅ Step 4：Docker 镜像构建测试（需 Docker 环境）
+│   ├── test_step4_module_health.py     <-- ✅ Step 4：模块健康检查（所有模块导入验证）
+│   ├── test_step4_multithreading.py    <-- ✅ Step 4：多线程安全测试（并发读写验证）
+│   └── test_step5_tui_backend.py       <-- ✅ Step 5：TUI 后端接口测试（DataAPI/CommandAPI/UserStore）
 │
-├── ui_gui/                             <-- 【核心二：桌面图形界面 (外部 PyQt 运行)】
+├── ui_gui/                             <-- 【桌面图形界面 (PyQt6，宿主机运行，不打包进 Docker)】
 │   ├── __init__.py
-│   ├── requirements.txt                <-- 依赖清单 (PyQt6)
-│   ├── app.py                          <-- UI 启动总入口 (统筹登录窗和主界面的切换)
-│   ├── login_window.py                 <-- 登录窗口类 (处理账号密码，生成 user_id)
-│   └── main_window.py                  <-- 主控制台窗口类 (发号施令、定时读取日志刷新图表)
+│   ├── requirements.txt                <-- GUI 依赖清单（PyQt6）
+│   ├── app.py                          <-- GUI 启动总入口（占位，待实现）
+│   ├── login_window.py                 <-- 登录窗口类（占位，待实现）
+│   └── main_window.py                  <-- 主控制台窗口类（占位，待实现）
 │
-└── ui_tui/                            
-    ├── Dockerfile                      <-- TUI 专属镜像
-    ├── requirements.txt                <-- TUI 专属依赖
+└── ui_tui/                             <-- 【终端交互界面 PetNodeOS (Textual，打包进 Docker)】
+    ├── Dockerfile                      <-- TUI 容器镜像构建说明
+    ├── requirements.txt                <-- TUI 依赖清单（textual）
     ├── app.py                          <-- TUI 启动入口（注入后端 API，管理屏幕切换）
     ├── backend/                        <-- 【TUI 后端接口层：前后端分离】
     │   ├── __init__.py
     │   ├── data_api.py                 <-- ✅ 数据读取接口（读 engine_status.json + realtime_stream.jsonl）
-    │   ├── command_api.py              <-- ✅ 指令发送接口（写 command.json）
-    │   └── user_store.py               <-- ✅ 用户登录与会话管理（user_id + 狗数量）
+    │   ├── command_api.py              <-- ✅ 指令发送接口（写 command.json 控制引擎）
+    │   └── user_store.py               <-- ✅ 用户登录与会话管理（user_id 生成 + 狗数量记录）
     └── screens/
         ├── __init__.py
-        ├── login_screen.py             <-- ✅ PetNodeOS 品牌登录屏（用户名 + 狗数量输入）
-        └── dashboard_screen.py         <-- ✅ 实时数据监控大屏（数据表 + 控制面板 + 日志）
-    
+        ├── login_screen.py             <-- ✅ PetNodeOS 品牌登录屏（ASCII Art + 用户名/狗数量输入）
+        └── dashboard_screen.py         <-- ✅ 实时数据监控大屏（数据表 + 控制面板 + 操作日志）
+
 ```
 ## 数据流解析
+
+下图展示了系统各组件之间的数据流向——Engine 如何生成数据、数据如何通过共享文件传递到 TUI/GUI、以及 TUI/GUI 如何通过指令文件控制 Engine：
 
 ```mermaid
 flowchart TD
@@ -205,6 +214,8 @@ flowchart TD
 ```
 ## 开发流程
 
+项目采用分步迭代的方式开发，每一步建立在上一步的基础上。以下流程图展示了从"数据生成"到"打包交付"的完整开发路径：
+
 ```mermaid
 flowchart TD
     subgraph Step1["✅ 第一步：让数据能生出来"]
@@ -252,9 +263,13 @@ flowchart TD
 
 ```
 
-## 代码核心逻辑，狗项圈模拟器
+## 代码核心逻辑——狗项圈模拟器
 
-### 0,目标和约束
+本节详细说明了模拟引擎的核心算法逻辑，包括数据模型设计、三层系统架构、行为状态机、事件触发机制等。
+
+### 0. 目标和约束
+
+以下是模拟系统的核心设计约束，所有数据生成逻辑都遵循这些规则：
 
 - Traits：固定不变；可叠加；每只狗最多 1~2 个
 - 长期事件（疾病/受伤等）：按“天”触发/推进；可持续数天到数周
@@ -264,7 +279,9 @@ flowchart TD
 - 电量不考虑
 - Tick：每一轮生成一条记录；默认 1 tick = 15 min（可通过 tick_interval 参数调整）
 
-### 2,核心对象，dogprofile
+### 1. 核心对象——DogProfile（狗的长期属性）
+
+`DogProfile` 是每只狗的"身份证"，在创建时确定，整个模拟过程中不变。它包含以下属性：
 
 DogProfile
 - dog_id: str
@@ -289,7 +306,9 @@ DogProfile
     - fever: severity *1.3, duration +2 days
     - injury: duration *2.0, steps_multiplier lower
 
-### 3,三层系统，谁负责什么
+### 2. 三层系统架构——谁负责什么
+
+模拟引擎的数据生成逻辑分为三个层次，每层各司其职：
 
 ```mermaid
 flowchart TD
@@ -329,6 +348,8 @@ flowchart TD
 
 ### 数据分类
 
+模拟引擎生成的数据按生命周期和更新频率分为四类：
+
 A) 瞬时值（per-tick instant）
 - heart_rate（心率）
 - resp_rate（呼吸频率）
@@ -349,6 +370,8 @@ D) 长期状态（跨天/跨周）
 - event_day_index / phase / intensity（事件过程）
 
 ### 事件触发概率
+
+事件的触发采用概率模型，综合考虑基础概率、Trait 修正和环境因素：
 
 P(event | dog, day, context)
 = base_rate(event, season, day_type)
@@ -401,6 +424,8 @@ engine/traits/
 
 ### 时间体系
 
+模拟引擎使用虚拟时钟推进模拟时间：
+
 - sim_time: datetime（模拟时间）
 - tick_interval: timedelta（每 tick 推进多少模拟时间）
 - 每次 generate_one_record()：sim_time += tick_interval
@@ -412,6 +437,8 @@ engine/traits/
 
 ### 行为状态机
 
+狗的行为状态通过马尔可夫链转移，当前状态和时间段共同决定下一个状态的概率：
+
 ```mermaid
 flowchart LR
     time_period["时段 (night/morning/daytime/evening)"] --> baseP["Base transition matrix P0(period)"]
@@ -422,6 +449,8 @@ flowchart LR
 
 ### 一天内的时间段分类
 
+系统将 24 小时划分为四个时段，不同时段的行为转移概率不同：
+
 - night:    22:00-06:00
 - morning:  06:00-09:00
 - daytime:  09:00-18:00
@@ -429,7 +458,9 @@ flowchart LR
 
 不同时间段会改变状态机各个状态之间转移的概率，比如evening的时候，睡觉的概率会更高
 
-### Trait 如何修正行为概念
+### Trait 如何修正行为概率
+
+Trait（慢性体质特质）通过加法修正影响行为转移概率：
 
 - RespiratoryRisk / CardiacRisk：提高 sleeping/resting 概率，降低 running 概率（幅度小）
 - OrthoRisk：显著降低 running 概率，略降低 walking 概率
@@ -437,6 +468,8 @@ flowchart LR
 - 修正后要重新归一化（概率和=1）
 
 ### GPS 生成逻辑
+
+GPS 坐标基于上一次位置进行随机偏移，偏移量取决于当前行为状态：
 
 每 tick 更新：
 new_lat = lat + Δlat
@@ -449,19 +482,23 @@ resting:  σ = tiny（几乎不动，只有抖动）
 walking:  σ = small
 running:  σ = large
 
-### Trait 对GPS 生成逻辑的修正
+### Trait 对 GPS 的修正
 
 - OrthoRisk：walking/running 的 σ 下调（更少移动）
 - Injury event peak：walking/running 的 σ ≈ 0（基本不动）
 
 ### 步数模型
 
+每个 tick 的步数增量通过行为驱动的正态分布生成：
+
 Δsteps = f(behavior) + noise
 today_steps += max(0, int(Δsteps))
 
 noise是一个小幅度的高斯噪声，为了模拟随机性，可以对一些指标加上高斯噪音
 
-### Trait/事件 对步数的影响
+### Trait/事件对步数的影响
+
+Trait 和活跃事件都会修正步数倍率：
 
 - OrthoRisk：Δsteps 的均值下降（走得少）
 - ActiveEvent（发烧/感冒）：
@@ -470,56 +507,55 @@ noise是一个小幅度的高斯噪声，为了模拟随机性，可以对一些
   - recovery：Δsteps × 0.6 → 1.0
 - Injury peak：Δsteps × 0.0~0.1
 
-### 慢性病波动
+### 慢性病日常波动（Trait Drift 机制）
 
-Trait（慢性病）如何体现“日常波动”（你要求的点）
-你说“慢性病日常波动也要加上”，这意味着：
+Trait（慢性体质特质）通过两种机制体现"日常波动"——即使没有 active_event，也会偶尔出现生理指标的"偏离"。这种偏离是低幅度、可持续一段时间（小时级/天级）的缓慢变化，而非突发性异常。系统通过两种机制同时作用：
 
-即使没有 active_event，也会偶尔出现“偏离”
-但这种偏离应当是低幅度、可持续一段时间（小时级/天级），而不是一条记录突然爆炸
-我建议定型为两种机制同时存在：
+**基线偏移（永久）**：例如 CardiacRisk 使静息 HR 均值 +10，波动更大（σ×1.2）。
 
-基线偏移（永久）
-例如 CardiacRisk：静息 HR 均值 +10，波动更大（σ×1.2）。
+**慢性波动（短周期的 Drift 漂移）**：引入 TraitDrift（漂移项），每隔 N ticks 缓慢更新：
 
-慢性波动（短周期的小 drift）
-引入一个 TraitDrift（漂移项），按小时或按天缓慢变化：
+TraitDrift 规范：
+- 每个 trait 都可以贡献一个 drift 值：drift_hr(t), drift_rr(t)
+- drift 不是每 tick 重新采样，而是"每 N ticks 更新一次"（默认 60 ticks ≈ 1 小时）
+- 最终瞬时值 = 行为基准 + trait 基线偏移 + drift + event 叠加 + 随机噪声
 
-TraitDrift规范
-- 每个 trait 都可以贡献一个 drift 值：
-  drift_hr(t), drift_rr(t)
-- drift 不需要每 tick 重采样；可以“每小时更新一次”或“每 N ticks 更新一次”
-- record 的瞬时值 = 行为基准 + trait基线偏移 + drift + event叠加 + 随机噪声
+实际效果：
 
-效果：
+- 呼吸道问题：夜间 RR 偶尔偏高，持续几十分钟到几小时
+- 心脏问题：静息 HR 偶尔持续偏快一段时间
+- 骨骼问题：活动量长期偏低，不一定要"事件"才能看出来
 
-呼吸道问题：夜间 RR 偶尔偏高、持续几十分钟到几小时
-心脏问题：静息 HR 偶尔持续偏快一段时间
-骨骼问题：活动量长期偏低，不一定要“事件”才能看出来
+### EventManager——按天推进事件
 
-### EventManager（按天推进事件，持续数周）
+EventManager 是事件系统的核心管理器，负责事件的触发和生命周期推进。
+
 #### 事件触发（每天一次）
-事件触发规则.txt
-- 每天午夜（跨天时）调用 EventManager.advance_day()
+
+每天午夜（模拟时间跨天时）自动执行以下逻辑：
+- 调用 `EventManager.advance_day()`
 - 若当前没有 active_event：
-  - 计算每类事件的 hazard：base_hazard × trait_multiplier × (可选：季节/天气/近几天运动负荷)
-  - 按 hazard 抽样，最多触发 1 个事件（避免多事件叠加太复杂）
+  - 计算每类事件的触发概率 hazard = base_hazard × trait_multiplier
+  - 按独立 Bernoulli 分布抽样，最多触发 1 个事件（避免多事件叠加太复杂）
 
 #### 事件推进（每天一次）
-事件推进规则.txt
-- active_event.day_index += 1
-- 根据 day_index / duration_days 判断 phase（onset/peak/recovery）
-- intensity = intensity_curve(phase, within_phase_progress)
-- 若 day_index >= duration_days：active_event = None（痊愈）
 
-#### Trait 对事件“更容易发生、更难好”的定型方式
-Trait影响事件的三种方式.txt
-1) hazard_multiplier：更容易触发某些事件
-2) duration_multiplier：同样事件持续更久（例如 ×1.3）
-3) severity_multiplier：强度更强（加值更大、步数倍率更低）
+已有事件的推进逻辑：
+- active_event.day_index += 1（推进一天）
+- 根据 day_index / duration_days 计算当前阶段 phase（onset → peak → recovery）
+- intensity = intensity_curve(phase, within_phase_progress)（计算当前强度）
+- 若 day_index >= duration_days：active_event = None（事件结束，狗痊愈）
 
-### 每 Tick 生成 record 的“最终流水线”
-（顺序很重要，避免 Bug）：
+#### Trait 对事件的三种影响
+
+Trait 通过以下三种方式让事件"更容易发生、更难好"：
+1. **hazard_multiplier**：提高事件触发概率（如 OrthoRisk 使受伤概率 ×2.0）
+2. **duration_multiplier**：延长事件持续时间（如 CardiacRisk 使发烧持续 ×1.3）
+3. **severity_multiplier**：加重事件严重度（如 CardiacRisk 使发烧严重度 ×1.3）
+
+### 每 Tick 生成 record 的完整流水线
+
+以下是 `generate_one_record()` 方法每次调用时的执行顺序（**顺序很重要，避免 Bug**）：
 
 ```Mermaid
 flowchart TD
@@ -538,28 +574,31 @@ flowchart TD
     L --> M["11) clamp/修正边界；组装 record 输出"]
 ```
 
-### 输出 record 的字段
+### 输出 record 的字段说明
 
-record = {
-    "device_id":    ,
-    "timestamp":    ,
-    "behavior":     ,
-    "heart_rate":   ,
-    "resp_rate":    ,
-    "temperature":  ,
-    "steps":        ,
-    "battery":      ,
-    "gps_lat":      ,
-    "gps_lng":      ,
-    "event":        ,
-    "event_phase":  ,
-}
+每条模拟数据记录包含以下 13 个字段：
 
-## TUI 界面系统（PetNodeOS）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `user_id` | `str` | 所属用户唯一标识 |
+| `device_id` | `str` | 设备（狗）唯一标识 |
+| `timestamp` | `str` | 模拟时间戳（ISO 8601 格式） |
+| `behavior` | `str` | 当前行为状态（sleeping / resting / walking / running） |
+| `heart_rate` | `float` | 心率（bpm，范围 30~250） |
+| `resp_rate` | `float` | 呼吸频率（次/分钟，范围 8~80） |
+| `temperature` | `float` | 体温（°C，范围 36.0~42.0） |
+| `steps` | `int` | 今日累计步数（跨天清零） |
+| `battery` | `int` | 电量百分比（当前固定 100，不模拟电量消耗） |
+| `gps_lat` | `float` | GPS 纬度 |
+| `gps_lng` | `float` | GPS 经度 |
+| `event` | `str\|None` | 当前活跃事件名称（无事件时为 None） |
+| `event_phase` | `str\|None` | 事件阶段（onset / peak / recovery，无事件时为 None） |
+
+## TUI 界面系统（PetNodeOS 终端交互界面）
 
 ### 架构概述：前后端分离
 
-TUI 严格遵循前后端分离原则。界面渲染层（`screens/`）不直接操作文件系统，所有数据读写都通过后端接口层（`backend/`）完成。
+TUI 严格遵循**前后端分离**原则：界面渲染层（`screens/`）不直接操作文件系统，所有数据读写都通过后端接口层（`backend/`）完成。这种设计使得界面代码和数据逻辑互不耦合，便于测试和维护。
 
 ```
 ui_tui/
@@ -750,3 +789,700 @@ docker compose up -d engine
 docker compose --profile tui run --rm tui
 ```
 
+
+---
+
+## 📖 使用说明书
+
+本说明书面向开发者和使用者，详细介绍 PetNode C端模拟器的整体代码结构、各模块功能、测试脚本使用方法、Docker 部署方式以及完整的 API 接口参考。
+
+---
+
+### 一、整体代码架构总览
+
+PetNode C端模拟器是一个**智能宠物项圈数据模拟系统**，模拟真实场景中狗项圈采集的各类生理和行为数据。整个系统由三大部分组成：
+
+| 组件 | 目录 | 运行方式 | 职责 |
+|------|------|----------|------|
+| **模拟引擎** | `engine/` | Docker 容器 | 生成模拟数据（心率、呼吸、体温、步数、GPS 等） |
+| **TUI 终端界面** | `ui_tui/` | Docker 容器 | 在终端中展示实时数据并控制引擎 |
+| **GUI 桌面界面** | `ui_gui/` | 宿主机直接运行 | PyQt6 桌面图形界面（当前为占位结构） |
+
+**三者之间的通信方式**：通过 `output_data/` 共享目录进行文件级通信，不依赖网络：
+
+```
+Engine ──写入──→ realtime_stream.jsonl ──读取──→ TUI/GUI（展示数据）
+Engine ──写入──→ engine_status.json    ──读取──→ TUI/GUI（显示状态）
+TUI/GUI ─写入──→ command.json          ──轮询──→ Engine（执行指令）
+```
+
+**核心设计原则**：
+- **策略模式**：Exporter（数据输出）和 Listener（指令接收）均通过抽象基类定义接口，运行时注入具体实现
+- **前后端分离**：TUI 界面层与数据逻辑层严格分离，通过 backend API 交互
+- **可复现性**：通过随机种子 (seed) 参数控制所有随机行为，相同种子产生相同数据
+- **多线程并行**：每个 tick 内，各只狗的数据在独立线程中并行生成
+
+---
+
+### 二、各模块详细说明
+
+#### 2.1 engine/main.py —— 核心调度器
+
+这是引擎的"大脑"，负责串联所有组件并驱动主循环。
+
+**功能**：
+- 解析命令行参数（用户数、狗数、tick 数、间隔、种子等）
+- 创建 SmartCollar（项圈）实例，每只狗对应一个
+- 创建 FileExporter（数据导出器）和 DummyListener（指令监听器）
+- 运行主循环：每轮 tick → 轮询指令 → 多线程生成数据 → 导出到文件
+- 支持优雅退出（Ctrl-C / SIGTERM）
+
+**命令行参数**：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--users` | 1 | 用户数量（一个用户可拥有多条狗） |
+| `--dogs` | 1 | 模拟的狗数量 |
+| `--ticks` | 100 | 每只狗生成的 tick 总数 |
+| `--tick-minutes` | 1 | 每个 tick 对应的模拟时间（分钟） |
+| `--interval` | 0.0 | 每轮 tick 之间的真实等待秒数（0=尽快跑完） |
+| `--seed` | None | 随机种子（用于可复现模拟） |
+| `--output-dir` | output_data/ | 输出目录路径 |
+| `--log-level` | INFO | 日志级别（DEBUG/INFO/WARNING/ERROR） |
+
+**使用示例**：
+
+```bash
+# 默认运行（1 用户 1 只狗，100 ticks，尽快跑完）
+python -m engine.main
+
+# 2 用户 6 只狗，500 ticks，每 1 秒一轮，种子 42
+python -m engine.main --users 2 --dogs 6 --ticks 500 --interval 1 --seed 42
+
+# 调试模式，详细日志
+python -m engine.main --log-level DEBUG --dogs 2 --ticks 50
+```
+
+#### 2.2 engine/models/ —— 业务模型层
+
+##### dog_profile.py —— 狗的长期属性
+
+`DogProfile` 是每只狗的"身份证"数据类，包含：
+- `dog_id`：唯一标识（12 位十六进制）
+- `user_id`：所属用户标识
+- `breed_size`：体型（small / medium / large）
+- `age_stage`：年龄阶段（puppy / adult / senior）
+- `traits`：慢性体质特质列表（0~2 个）
+- `home_lat/lng`：GPS 基准位置（默认重庆大学坐标）
+
+通过 `DogProfile.random_profile(rng)` 可随机生成一个完整的狗档案。
+
+##### smart_collar.py —— 智能项圈模拟器
+
+`SmartCollar` 是核心数据生成类，每次调用 `generate_one_record()` 产生一条完整的数据记录。
+
+内部维护的状态包括：
+- 模拟时钟（sim_time）
+- 行为状态机（sleeping/resting/walking/running）
+- 日累计步数（跨天清零）
+- GPS 坐标（连续偏移）
+- 事件管理器（EventManager）
+- Trait 慢性波动（drift）
+
+#### 2.3 engine/traits/ —— 特质层（慢性病/体质修正）
+
+每个 Trait 代表一种终身属性，通过 5 组修正参数影响模拟的各个维度：
+
+| Trait | 名称 | 核心效果 |
+|-------|------|----------|
+| `CardiacRisk` | 心脏问题倾向 | HR +10 bpm，波动 ×1.2，发烧概率 ×1.2，慢性 HR 漂移 |
+| `RespiratoryRisk` | 呼吸道问题倾向 | RR +4 次/分，波动 ×1.2，感冒概率 ×1.5，慢性 RR 漂移 |
+| `OrthoRisk` | 骨骼/关节问题倾向 | 步数 ×0.75，受伤概率 ×2.0，GPS 活动范围缩小 |
+
+**关键文件**：
+- `base_trait.py`：抽象基类，定义了 BaselineModifiers、EventHazardMultipliers、EventSeverityMultipliers、BehaviorModifiers、GpsSigmaMultipliers 五组修正参数，以及 drift 慢性波动机制
+- `cardiac.py`、`respiratory.py`、`ortho.py`：三种具体 Trait 的实现，只需覆盖类属性即可
+
+#### 2.4 engine/events/ —— 事件层（疾病/受伤）
+
+事件系统模拟狗的疾病和受伤过程，每个事件有三个阶段：
+
+```
+onset（发病期）→ peak（高峰期）→ recovery（恢复期）
+```
+
+| 事件 | 基础持续天数 | 核心效果 |
+|------|------------|----------|
+| `FeverEvent` | 7 天 | 体温 +1.5°C，心率 +15 bpm，呼吸 +6 次/分 |
+| `InjuryEvent` | 10 天 | 步数≈0（peak），GPS≈不动（peak），心率 +8 bpm |
+
+**关键文件**：
+- `base_event.py`：事件抽象基类，定义了 phase（阶段）、intensity（强度曲线）、vital_effect()、steps_multiplier_value() 等通用接口
+- `event_manager.py`：事件管理器，按天推进事件生命周期，按概率触发新事件
+- `fever.py`、`injury.py`：两种具体事件的实现
+
+#### 2.5 engine/exporters/ —— 数据输出层
+
+采用**策略模式**设计，调度器只依赖 `BaseExporter` 接口：
+
+| 类 | 状态 | 说明 |
+|----|------|------|
+| `BaseExporter` | 抽象基类 | 定义 export() / flush() / close() 三个抽象方法 |
+| `FileExporter` | ✅ 当前使用 | 将 record 以 JSONL 格式追加写入本地文件 |
+| `HttpExporter` | 🔮 未来占位 | 通过 HTTP POST 上报到远程服务器（空壳） |
+
+#### 2.6 engine/listeners/ —— 指令接收层
+
+同样采用**策略模式**，负责监听外部控制指令：
+
+| 类 | 状态 | 说明 |
+|----|------|------|
+| `BaseListener` | 抽象基类 | 定义 poll() / close() 两个抽象方法 |
+| `DummyListener` | ✅ 当前使用 | 每次 poll() 返回 None（不连接任何服务器，日志空转） |
+| `WsListener` | 🔮 未来占位 | 通过 WebSocket 接收远程服务器指令（空壳） |
+
+> **⚠️ 注意**：`dummy_listener.py` 是一个**有意设计的占位文件**，它的存在是为了在当前阶段（无远程服务器）让引擎的 Listener 接口有一个可运行的实现。当未来接入远程服务器时，只需替换为 `WsListener` 即可，无需修改调度器代码。**请勿删除此文件。**
+
+#### 2.7 ui_tui/ —— TUI 终端交互界面
+
+PetNodeOS 终端界面基于 [Textual](https://textual.textualize.io/) 框架构建，采用前后端分离架构。
+
+**后端接口层（backend/）**：
+- `data_api.py`：封装所有数据读取操作（读 JSONL 文件 + 引擎状态文件）
+- `command_api.py`：封装所有指令发送操作（写 command.json）
+- `user_store.py`：管理用户登录会话（生成 user_id、记录狗数量）
+
+**前端界面层（screens/）**：
+- `login_screen.py`：PetNodeOS 品牌登录屏，包含 ASCII Art Logo、用户名输入、狗数量输入
+- `dashboard_screen.py`：实时数据监控大屏，包含状态栏、数据表、控制面板、操作日志
+
+**入口文件（app.py）**：初始化 Textual App，注入后端 API 实例，管理屏幕切换。
+
+#### 2.8 ui_gui/ —— GUI 桌面图形界面（占位）
+
+基于 PyQt6 的桌面图形界面，当前为占位结构。由于 PyQt6 依赖宿主机的图形环境（X11/Wayland），**无法打包进 Docker 容器**，因此不参与 Docker 编排。
+
+---
+
+### 三、测试脚本使用指南
+
+#### 3.1 测试文件一览
+
+| 测试文件 | 对应步骤 | 测试内容 | 是否需要 Docker |
+|----------|----------|----------|:---------------:|
+| `test_step1_data_generation.py` | Step 1 | DogProfile、Traits、Events、SmartCollar 数据生成 | 否 |
+| `test_step2_file_exporter.py` | Step 2 | FileExporter JSONL 文件写入与读取 | 否 |
+| `test_step3_scheduler.py` | Step 3 | main.py 的 run() 函数端到端测试 | 否 |
+| `test_step4_docker_build.py` | Step 4 | Docker 镜像构建与容器运行验证 | **是** |
+| `test_step4_module_health.py` | Step 4 | 所有模块的导入和基础功能验证 | 否 |
+| `test_step4_multithreading.py` | Step 4 | 多线程并发数据生成和文件写入安全性 | 否 |
+| `test_step5_tui_backend.py` | Step 5 | DataAPI、CommandAPI、UserStore 单元测试 | 否 |
+
+#### 3.2 运行测试
+
+```bash
+# 进入项目目录
+cd C_end_Simulator
+
+# 安装测试依赖
+pip install -r tests/requirements.txt
+
+# 运行所有非 Docker 测试
+pytest
+
+# 运行所有测试（包括 Docker 测试，需要 Docker 环境）
+pytest -m docker        # 仅 Docker 测试
+pytest                  # 所有测试
+
+# 运行单个测试文件
+pytest tests/test_step1_data_generation.py
+
+# 详细模式（显示每个测试用例名称和结果）
+pytest -v
+
+# 显示测试输出（不捕获 print）
+pytest -s
+
+# 运行特定测试类或方法
+pytest tests/test_step1_data_generation.py::TestSmartCollar::test_record_fields
+```
+
+#### 3.3 各测试文件详解
+
+**test_step1_data_generation.py**（数据生成测试）：
+- 验证 DogProfile 的默认和随机创建
+- 验证三种 Trait 的基线参数和 drift 更新
+- 验证事件的阶段推进和强度曲线
+- 验证 SmartCollar 的完整数据生成流水线（字段完整性、类型、范围）
+- 验证步数的跨天清零和单日单调递增
+- 验证行为分布的昼夜差异
+- 验证随机种子的可复现性
+
+**test_step2_file_exporter.py**（文件导出测试）：
+- 验证 FileExporter 能正确创建 JSONL 文件
+- 验证多条记录的追加写入和格式正确性
+- 验证 flush() 和 close() 的行为
+
+**test_step3_scheduler.py**（调度器集成测试）：
+- 端到端测试 main.py 的 run() 函数
+- 验证多用户多狗的数据生成和文件输出
+- 验证引擎状态文件的写入
+
+**test_step4_docker_build.py**（Docker 构建测试）：
+- 验证 engine 镜像的构建
+- 验证容器运行和数据输出
+- 需要 Docker 环境，标记为 `@pytest.mark.docker`
+
+**test_step4_module_health.py**（模块健康检查）：
+- 验证所有模块能正常导入
+- 验证基础对象能正常创建
+- 用于快速检测代码结构是否完好
+
+**test_step4_multithreading.py**（多线程安全测试）：
+- 验证多线程并发调用 SmartCollar.generate_one_record() 的安全性
+- 验证 FileExporter 在多线程写入下的数据完整性
+
+**test_step5_tui_backend.py**（TUI 后端测试）：
+- 验证 DataAPI 的数据读取功能
+- 验证 CommandAPI 的指令发送功能
+- 验证 UserStore 的登录/登出逻辑
+
+---
+
+### 四、Docker 部署与脚本使用
+
+#### 4.1 Docker 架构总览
+
+系统使用 Docker Compose 编排两个容器：
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    宿主机 (Host)                          │
+│                                                          │
+│  ┌─────────────────┐    output_data/    ┌──────────────┐ │
+│  │  engine 容器     │ ←─ bind mount ──→ │  tui 容器     │ │
+│  │  (后台常驻)      │                    │  (交互式)     │ │
+│  │                  │ realtime_stream   │              │ │
+│  │  SmartCollar     │ engine_status     │  Textual UI  │ │
+│  │  FileExporter    │ command.json      │  DataAPI     │ │
+│  │  DummyListener   │                    │  CommandAPI  │ │
+│  └─────────────────┘                    └──────────────┘ │
+│                                                          │
+│  ┌─────────────────┐                                     │
+│  │  GUI (宿主机)    │ ←── 直接读写 output_data/ ──→       │
+│  │  PyQt6 (可选)    │                                     │
+│  └─────────────────┘                                     │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### 4.2 快速启动
+
+```bash
+# 进入项目目录
+cd C_end_Simulator
+
+# 方式一：只启动引擎（后台运行）
+docker compose up -d engine
+
+# 方式二：启动引擎 + TUI（交互式终端）
+docker compose up -d engine                      # 先启动引擎
+docker compose --profile tui run --rm tui        # 再启动 TUI（交互式）
+
+# 停止所有服务
+docker compose down
+
+# 查看引擎日志
+docker compose logs -f engine
+
+# 查看容器状态
+docker compose ps
+```
+
+#### 4.3 docker-compose.yml 配置详解
+
+**engine 服务**：
+- `build.dockerfile: engine/Dockerfile`：使用 engine 专属的 Dockerfile 构建镜像
+- `restart: unless-stopped`：崩溃自动重启（除非手动 docker compose down）
+- `volumes: ./output_data:/app/output_data`：bind mount，将宿主机的 output_data/ 映射到容器内
+- `PYTHONUNBUFFERED=1`：禁用 Python 输出缓冲，确保日志实时可见
+- `command`：默认参数（2 只狗 / 200 ticks / 1 秒间隔 / seed=42），可自行修改
+
+**tui 服务**：
+- `profiles: [tui]`：归入 tui profile，默认不随 `docker compose up` 启动
+- `stdin_open: true` + `tty: true`：分配伪终端 PTY，这是 Textual TUI 在 Docker 中正常渲染的**必要条件**
+- `depends_on: [engine]`：确保 Engine 先启动
+- 使用方式：`docker compose --profile tui run --rm tui`
+
+#### 4.4 TUI 如何封装进 Docker 的原理
+
+传统的图形界面（如 PyQt6 GUI）依赖宿主机的图形环境（X11/Wayland），无法在 Docker 容器中运行。但 TUI（终端界面）通过以下机制实现了 Docker 封装：
+
+1. **Textual 框架的纯终端渲染**：Textual 使用 ANSI 转义序列（escape codes）在终端中渲染全屏 UI，不依赖任何图形环境
+2. **Docker 的 PTY（伪终端）支持**：通过 `stdin_open: true` 和 `tty: true` 配置，Docker 为容器分配一个伪终端
+3. **docker compose run 的交互模式**：用户通过 `docker compose run --rm tui` 以交互模式连接到容器的 TTY
+4. **TTY 转发**：用户在宿主机终端的键盘输入通过 Docker 转发到容器内的 Textual 应用；Textual 的渲染输出通过 Docker 转发到宿主机终端
+
+**效果**：用户在宿主机终端中看到的是一个全屏交互式 TUI 应用，但实际运行在 Docker 容器内部。TUI 通过 bind mount 的共享卷读取引擎数据、发送控制指令，完全不需要网络通信。
+
+#### 4.5 engine/Dockerfile 详解
+
+```dockerfile
+FROM python:3.12-slim          # 基础镜像（Python 3.12 精简版）
+WORKDIR /app                   # 工作目录
+COPY engine/requirements.txt   # 先复制依赖清单（利用 Docker 缓存层加速构建）
+RUN pip install ...            # 安装依赖（numpy）
+COPY engine/ /app/engine/      # 复制 engine 源码
+RUN mkdir -p /app/output_data  # 创建输出目录
+ENTRYPOINT ["python", "-m", "engine.main"]   # 固定入口
+CMD ["--dogs", "2", ...]       # 默认参数（可被 docker run / compose 覆盖）
+```
+
+**ENTRYPOINT + CMD 设计**：
+- ENTRYPOINT 固定执行 `python -m engine.main`
+- CMD 提供默认参数，用户可通过 docker-compose.yml 的 command 字段或 docker run 覆盖
+
+#### 4.6 ui_tui/Dockerfile 详解
+
+```dockerfile
+FROM python:3.12-slim          # 基础镜像
+WORKDIR /app
+COPY ui_tui/requirements.txt   # 先复制依赖清单
+RUN pip install ...            # 安装依赖（textual）
+COPY ui_tui/ /app/ui_tui/      # 复制 TUI 源码（含 backend/ + screens/）
+ENTRYPOINT ["python", "-m", "ui_tui.app"]
+CMD ["--output-dir", "/app/output_data"]
+```
+
+#### 4.7 scripts/docker_build_test.sh 使用指南
+
+这是一个自动化的 Docker 构建与验证脚本，按顺序执行四个步骤：
+
+```bash
+# 赋予执行权限
+chmod +x scripts/docker_build_test.sh
+
+# 在 C_end_Simulator/ 目录下运行
+./scripts/docker_build_test.sh
+```
+
+**四个步骤**：
+1. **构建 engine 镜像**：`docker build -f engine/Dockerfile -t petnode-engine:latest .`
+2. **运行容器测试**：启动 engine 容器（2 只狗 / 20 ticks），验证 JSONL 文件生成和记录数正确性（期望 40 条）
+3. **验证 docker-compose.yml**：检查 YAML 语法正确性
+4. **docker compose 编排测试**：使用 `docker compose up --build -d engine` 测试完整编排流程
+
+脚本输出带颜色标记（✓ 绿色=成功，✗ 红色=失败，⚠ 黄色=警告）。
+
+---
+
+### 五、API 接口完整参考
+
+以下列出系统中所有可调用的 API 接口（包括 Engine 内部接口和 TUI 后端接口）。
+
+#### 5.1 Engine 核心接口
+
+##### main.py 模块级函数
+
+| 函数 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `run(...)` | 见下方 | `list[dict]` | 运行模拟引擎主循环，返回所有生成的记录 |
+| `main(argv)` | `list[str] \| None` | `None` | CLI 入口，解析参数并调用 run() |
+| `parse_args(argv)` | `list[str] \| None` | `Namespace` | 解析命令行参数 |
+| `read_command(output_dir)` | `Path` | `dict \| None` | 读取 command.json 中的控制指令 |
+| `write_engine_status(output_dir, status)` | `Path, dict` | `None` | 写入引擎状态到 engine_status.json |
+
+**`run()` 函数参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `num_dogs` | `int` | 1 | 狗的数量 |
+| `num_ticks` | `int` | 100 | 每只狗生成的 tick 数 |
+| `tick_minutes` | `int` | 1 | 每 tick 对应的模拟分钟数 |
+| `real_interval` | `float` | 0.0 | 每轮 tick 之间的真实间隔秒数 |
+| `seed` | `int \| None` | None | 随机种子 |
+| `output_dir` | `str \| Path \| None` | None | 输出目录 |
+| `num_users` | `int` | 1 | 用户数量 |
+
+##### SmartCollar 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `__init__(profile, start_time, tick_interval, seed)` | 见下方 | — | 创建项圈实例 |
+| `generate_one_record()` | — | `dict` | 生成一条完整的数据记录（13 个字段） |
+| `profile` | — | `DogProfile` | 关联的狗档案 |
+| `sim_time` | — | `datetime` | 当前模拟时间 |
+| `tick_interval` | — | `timedelta` | 每 tick 推进的模拟时间 |
+
+**`__init__()` 参数**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `profile` | `DogProfile \| None` | None | 狗的长期属性（None 则随机生成） |
+| `start_time` | `datetime \| None` | None | 模拟起始时间（None 则使用 2025-06-01） |
+| `tick_interval` | `timedelta` | 1 分钟 | 每 tick 推进的模拟时间 |
+| `seed` | `int \| None` | None | 随机种子 |
+
+##### DogProfile 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `random_profile(rng, user_id)` | `Generator \| None, str` | `DogProfile` | 静态方法：随机生成一个 DogProfile |
+| `hr_mean_offset` | — | `float` | 所有 trait 的心率均值偏移之和 |
+| `rr_mean_offset` | — | `float` | 所有 trait 的呼吸频率均值偏移之和 |
+| `temp_mean_offset` | — | `float` | 所有 trait 的体温均值偏移之和 |
+| `hr_var_mult` | — | `float` | 所有 trait 的心率方差倍率之积 |
+| `rr_var_mult` | — | `float` | 所有 trait 的呼吸频率方差倍率之积 |
+| `steps_mult` | — | `float` | 所有 trait 的步数倍率之积 |
+
+##### EventManager 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `advance_day(traits)` | `list[BaseTrait]` | `None` | 每天午夜调用：推进事件或尝试触发新事件 |
+| `set_rng(rng)` | `Generator` | `None` | 设置随机数生成器 |
+| `active_event` | — | `BaseEvent \| None` | 当前活跃事件 |
+
+##### BaseEvent 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `phase` | — | `EventPhase` | 当前阶段（ONSET / PEAK / RECOVERY） |
+| `intensity` | — | `float` | 当前强度 [0, 1] |
+| `is_finished` | — | `bool` | 事件是否已结束 |
+| `advance_day()` | — | `None` | 推进一天 |
+| `vital_effect()` | — | `dict` | 对瞬时值的叠加量 |
+| `steps_multiplier_value()` | — | `float` | 步数倍率（<1 表示步数减少） |
+| `gps_sigma_multiplier()` | — | `float` | GPS σ 倍率（<1 表示活动范围缩小） |
+
+##### BaseTrait 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `name` | — | `str` | Trait 名称 |
+| `baseline` | — | `BaselineModifiers` | 基线偏移参数 |
+| `event_hazard` | — | `EventHazardMultipliers` | 事件触发概率倍率 |
+| `event_severity` | — | `EventSeverityMultipliers` | 事件严重度倍率 |
+| `behavior` | — | `BehaviorModifiers` | 行为转移概率修正 |
+| `gps_sigma` | — | `GpsSigmaMultipliers` | GPS 位移修正 |
+| `steps_multiplier` | — | `float` | 步数倍率 |
+| `update_drift(rng)` | `Generator` | `None` | 更新慢性波动值 |
+| `drift_hr` | — | `float` | 当前心率漂移值 |
+| `drift_rr` | — | `float` | 当前呼吸频率漂移值 |
+
+##### FileExporter 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `__init__(output_dir, filename)` | `Path \| None, str` | — | 创建导出器，打开 JSONL 文件 |
+| `export(record)` | `dict` | `None` | 追加写入一条记录（线程安全） |
+| `flush()` | — | `None` | 强制刷盘（flush + fsync） |
+| `close()` | — | `None` | 关闭文件句柄（幂等） |
+| `filepath` | — | `Path` | 当前写入的文件路径 |
+
+##### DummyListener 接口
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `poll()` | — | `None` | 空转一次，始终返回 None |
+| `close()` | — | `None` | 标记为已关闭（幂等） |
+
+#### 5.2 TUI 后端接口
+
+##### DataAPI（数据读取接口）
+
+**位置**：`ui_tui/backend/data_api.py`
+
+| 方法 | 参数 | 返回值 | 说明 |
+|------|------|--------|------|
+| `get_engine_status()` | — | `dict \| None` | 读取 engine_status.json，返回引擎运行状态 |
+| `get_latest_records(n)` | `n: int = 20` | `list[dict]` | 读取最新 n 条数据记录（时间倒序） |
+| `get_records_by_user(user_id, n)` | `user_id: str, n: int = 50` | `list[dict]` | 按用户 ID 筛选记录 |
+| `get_records_by_device(device_id, n)` | `device_id: str, n: int = 20` | `list[dict]` | 按设备 ID 筛选记录 |
+| `get_total_record_count()` | — | `int` | 获取记录总数 |
+| `get_unique_devices()` | — | `list[str]` | 获取所有唯一设备 ID |
+
+**使用示例**：
+
+```python
+from ui_tui.backend import DataAPI
+
+api = DataAPI(output_dir="/app/output_data")
+
+# 获取引擎状态
+status = api.get_engine_status()
+# → {"running": True, "num_dogs": 2, "current_tick": 50, ...}
+
+# 获取最新 10 条记录
+records = api.get_latest_records(10)
+# → [{"device_id": "dog_xxx", "heart_rate": 80, ...}, ...]
+
+# 按设备筛选
+dog_records = api.get_records_by_device("abc123def456")
+```
+
+##### CommandAPI（指令发送接口）
+
+**位置**：`ui_tui/backend/command_api.py`
+
+| 方法 | 参数 | 说明 |
+|------|------|------|
+| `send_stop()` | — | 发送 stop 指令，停止引擎 |
+| `send_pause()` | — | 发送 pause 指令，暂停引擎 |
+| `send_resume()` | — | 发送 resume 指令，恢复引擎 |
+| `send_set_interval(interval)` | `interval: float` | 设置 tick 间隔（秒，必须 >= 0） |
+| `clear_command()` | — | 清空指令文件 |
+| `get_current_command()` | — | 读取当前指令（返回 dict \| None） |
+
+**指令格式**（写入 `command.json`）：
+
+```json
+{"action": "stop"}
+{"action": "pause"}
+{"action": "resume"}
+{"action": "set_interval", "value": 2.0}
+```
+
+**使用示例**：
+
+```python
+from ui_tui.backend import CommandAPI
+
+cmd = CommandAPI(output_dir="/app/output_data")
+
+cmd.send_pause()              # 暂停引擎
+cmd.send_resume()             # 恢复引擎
+cmd.send_set_interval(2.0)    # 设置间隔为 2 秒
+cmd.send_stop()               # 停止引擎
+```
+
+##### UserStore（用户管理接口）
+
+**位置**：`ui_tui/backend/user_store.py`
+
+| 方法/属性 | 参数 | 返回值 | 说明 |
+|-----------|------|--------|------|
+| `login(username, num_dogs)` | `str, int` | `str` | 登录并返回 user_id |
+| `logout()` | — | `None` | 登出，清除会话 |
+| `is_logged_in` | — | `bool` | 是否已登录 |
+| `user_id` | — | `str` | 当前用户 ID（未登录返回空字符串） |
+| `username` | — | `str` | 当前用户名（未登录返回空字符串） |
+| `num_dogs` | — | `int` | 当前用户的狗数量（未登录返回 0） |
+| `get_user_info()` | — | `dict \| None` | 获取完整用户信息 |
+
+**user_id 生成规则**：
+- 基于用户名的 SHA-256 哈希前 8 位十六进制字符
+- 格式：`user_<8 hex chars>`
+- 相同用户名始终产生相同的 user_id（确定性哈希）
+
+**使用示例**：
+
+```python
+from ui_tui.backend import UserStore
+
+store = UserStore()
+user_id = store.login("alice", 3)   # → "user_2bd806c9"
+print(store.num_dogs)               # → 3
+print(store.is_logged_in)           # → True
+store.logout()
+```
+
+#### 5.3 控制指令协议
+
+Engine 与 TUI/GUI 之间通过 `command.json` 文件进行指令交互。以下是所有支持的指令：
+
+| 指令 | JSON 格式 | 引擎行为 |
+|------|-----------|----------|
+| 停止 | `{"action": "stop"}` | 立即停止模拟，退出主循环 |
+| 暂停 | `{"action": "pause"}` | 暂停数据生成（主循环仍在运行，但跳过生成） |
+| 恢复 | `{"action": "resume"}` | 从暂停状态恢复数据生成 |
+| 调整间隔 | `{"action": "set_interval", "value": 2.0}` | 动态调整每轮 tick 的真实等待秒数 |
+
+**工作原理**：
+1. TUI/GUI 调用 CommandAPI 写入指令到 `command.json`
+2. Engine 在每个 tick 开始时轮询读取 `command.json`
+3. 读取到指令后执行对应操作
+4. 指令是"最后写入有效"的模式（非队列）
+
+#### 5.4 引擎状态文件格式
+
+`engine_status.json` 记录引擎的运行状态，由 Engine 定期更新，供 TUI/GUI 读取：
+
+```json
+{
+  "running": true,
+  "num_users": 1,
+  "num_dogs": 2,
+  "total_ticks": 200,
+  "tick_minutes": 1,
+  "current_tick": 50
+}
+```
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `running` | `bool` | 引擎是否正在运行 |
+| `num_users` | `int` | 用户数量 |
+| `num_dogs` | `int` | 狗的数量 |
+| `total_ticks` | `int` | 总 tick 数 |
+| `tick_minutes` | `int` | 每 tick 对应的模拟分钟数 |
+| `current_tick` | `int` | 当前已完成的 tick 数 |
+
+---
+
+### 六、快速上手流程
+
+#### 6.1 本地开发（不使用 Docker）
+
+```bash
+# 1. 安装 engine 依赖
+cd C_end_Simulator
+pip install -r engine/requirements.txt
+
+# 2. 运行引擎（生成数据）
+python -m engine.main --dogs 2 --ticks 100 --interval 1 --seed 42
+
+# 3. 查看生成的数据
+cat output_data/realtime_stream.jsonl | head -5
+cat output_data/engine_status.json
+
+# 4.（可选）安装并运行 TUI
+pip install -r ui_tui/requirements.txt
+python -m ui_tui.app
+
+# 5. 运行测试
+pip install -r tests/requirements.txt
+pytest -v
+```
+
+#### 6.2 Docker 部署
+
+```bash
+cd C_end_Simulator
+
+# 1. 启动引擎容器（后台运行）
+docker compose up -d engine
+
+# 2.（可选）查看引擎日志
+docker compose logs -f engine
+
+# 3.（可选）启动 TUI 终端界面（交互模式）
+docker compose --profile tui run --rm tui
+
+# 4. 停止所有服务
+docker compose down
+```
+
+#### 6.3 自定义引擎参数
+
+修改 `docker-compose.yml` 中 engine 服务的 `command` 字段即可：
+
+```yaml
+command: ["--dogs", "5", "--ticks", "1000", "--interval", "0.5", "--seed", "123", "--output-dir", "/app/output_data"]
+```
+
+或通过 docker run 直接覆盖：
+
+```bash
+docker run --rm -v ./output_data:/app/output_data petnode-engine \
+    --dogs 5 --ticks 1000 --interval 0.5 --seed 123 --output-dir /app/output_data
+```

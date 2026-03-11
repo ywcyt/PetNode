@@ -1,2 +1,5 @@
+# tests/requirements.txt —— 测试依赖
+# pytest: Python 测试框架，用于运行所有单元测试和集成测试
+# numpy:  测试中需要创建 SmartCollar/DogProfile 等对象，这些对象依赖 numpy
 pytest>=7,<9
 numpy>=1.24,<3
