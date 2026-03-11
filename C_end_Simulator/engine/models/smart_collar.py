@@ -131,9 +131,9 @@ class SmartCollar:
         tick_interval: timedelta = timedelta(minutes=1),
         seed: Optional[int] = None,
     ) -> None:
-        self.profile = profile or DogProfile.random_profile()
-        self.tick_interval = tick_interval
         self._rng = np.random.default_rng(seed)
+        self.profile = profile or DogProfile.random_profile(rng=self._rng)
+        self.tick_interval = tick_interval
 
         # 时钟
         self.sim_time = start_time or datetime(2025, 6, 1, 0, 0, 0)

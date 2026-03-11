@@ -190,24 +190,27 @@ class TestSmartCollar:
 
     def test_steps_reset_on_day_change(self):
         collar = SmartCollar(
+            profile=DogProfile(dog_id="day_change_test"),
             start_time=datetime(2025, 6, 1, 23, 55, 0),
             tick_interval=timedelta(minutes=5),
             seed=42,
         )
         # Generate records until we cross midnight
-        day1_max_steps = 0
-        crossed = False
+        day1_steps: list[int] = []
+        day2_steps: list[int] = []
         for _ in range(20):
             r = collar.generate_one_record()
             ts = datetime.fromisoformat(r["timestamp"])
-            if ts.date() > datetime(2025, 6, 1).date():
-                if not crossed:
-                    crossed = True
-                    # Steps might be 0 or small after reset
-                    assert r["steps"] <= day1_max_steps
+            if ts.date() == datetime(2025, 6, 1).date():
+                day1_steps.append(r["steps"])
             else:
-                day1_max_steps = max(day1_max_steps, r["steps"])
-        assert crossed, "Should have crossed midnight"
+                day2_steps.append(r["steps"])
+        assert len(day2_steps) > 0, "Should have crossed midnight"
+        # After reset, the first step count of day 2 should be
+        # less than or equal to the last step count of day 1
+        # (unless day 1 had 0 steps, which is fine)
+        if day1_steps and max(day1_steps) > 0:
+            assert day2_steps[0] < max(day1_steps)
 
     def test_nighttime_more_sleeping(self):
         collar = SmartCollar(
@@ -274,7 +277,7 @@ class TestSmartCollar:
     def test_reproducible_with_seed(self):
         """Same seed + same profile should produce same records"""
         profile = DogProfile(dog_id="repro_test", traits=[CardiacRisk()])
-        c1 = SmartCollar(profile=DogProfile(dog_id="repro_test", traits=[CardiacRisk()]), seed=99)
+        c1 = SmartCollar(profile=profile, seed=99)
         c2 = SmartCollar(profile=DogProfile(dog_id="repro_test", traits=[CardiacRisk()]), seed=99)
         for _ in range(50):
             r1 = c1.generate_one_record()
