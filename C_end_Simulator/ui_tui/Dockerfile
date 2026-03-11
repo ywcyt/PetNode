@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 LABEL maintainer="PetNode Team"
-LABEL description="PetNode C端 TUI 终端监控界面"
+LABEL description="PetNodeOS TUI 终端监控界面"
 
 WORKDIR /app
 
@@ -9,8 +9,9 @@ WORKDIR /app
 COPY ui_tui/requirements.txt /app/ui_tui/requirements.txt
 RUN pip install --no-cache-dir -r ui_tui/requirements.txt
 
-# 复制 TUI 源码
+# 复制 TUI 源码（含 backend/ 和 screens/）
 COPY ui_tui/ /app/ui_tui/
 
-# 默认入口
+# 默认入口：指定数据目录为 Docker bind mount 路径
 ENTRYPOINT ["python", "-m", "ui_tui.app"]
+CMD ["--output-dir", "/app/output_data"]

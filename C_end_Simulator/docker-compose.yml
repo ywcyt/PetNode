@@ -14,9 +14,9 @@ services:
     # 默认参数：2 只狗，200 ticks，每 1 秒一轮，种子 42
     command: ["--dogs", "2", "--ticks", "200", "--interval", "1", "--seed", "42", "--output-dir", "/app/output_data"]
 
-  # ─────────── TUI 终端监控界面容器（可选）───────────
-  # 当前 TUI 为骨架状态，仅作为编排占位
-  # 启动方式: docker compose up tui
+  # ─────────── TUI 终端监控界面容器（PetNodeOS）───────────
+  # 启动方式: docker compose --profile tui run --rm tui
+  # TUI 通过 output_data/ 共享卷与 Engine 通信（前后端分离）
   tui:
     build:
       context: .
@@ -28,5 +28,6 @@ services:
       - ./output_data:/app/output_data
     depends_on:
       - engine
+    command: ["--output-dir", "/app/output_data"]
     profiles:
       - tui
