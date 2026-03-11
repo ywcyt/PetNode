@@ -5,7 +5,7 @@ engine/main.py —— 核心调度器
   - 解析命令行参数（狗数量、Tick 数、间隔、种子等）
   - 创建 SmartCollar 实例 + FileExporter + DummyListener
   - 主循环：每隔 real_interval 秒调用项圈生成数据 → 导出到文件
-  - 轮询 command.json 读取控制指令（start/stop/set_interval）
+  - 轮询 command.json 读取控制指令（stop/pause/resume/set_interval）
   - 优雅退出：Ctrl-C / SIGTERM
 
 用法::

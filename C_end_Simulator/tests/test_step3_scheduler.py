@@ -188,7 +188,7 @@ class TestSchedulerRun:
         assert len(ids) == 3
 
     def test_reproducible_with_seed(self, tmp_path: Path):
-        """相同种子应产出相同数值（device_id 除外，因 uuid4 不受 numpy 种子控制）"""
+        """相同种子应产出相同数值（device_id 除外，因 uuid4 不受 NumPy 种子控制）"""
         dir1 = tmp_path / "run1"
         dir2 = tmp_path / "run2"
         r1 = run(num_dogs=1, num_ticks=20, seed=42, output_dir=dir1)
