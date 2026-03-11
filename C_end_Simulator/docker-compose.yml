@@ -1,33 +1,66 @@
+# ──────────────────────────────────────────────────────────────
+# docker-compose.yml —— PetNode C端模拟系统的容器编排配置
+#
+# 编排了两个服务：
+#   1. engine : 核心引擎容器（后台常驻，持续生成模拟数据）
+#   2. tui    : TUI 终端监控容器（按需启动，通过 profile 控制）
+#
+# 两个容器通过 output_data/ 共享卷（bind mount）进行通信：
+#   - Engine 写入数据文件 → TUI 读取并展示
+#   - TUI 写入控制指令 → Engine 轮询并执行
+#
+# 使用方式：
+#   docker compose up -d engine          # 后台启动引擎
+#   docker compose --profile tui run --rm tui  # 交互式启动 TUI
+#   docker compose down                  # 停止所有服务
+#
+# 注意：
+#   - GUI (ui_gui/) 不在此编排中——它依赖宿主机图形环境，
+#     需要在宿主机上直接运行 python -m ui_gui.app
+#   - TUI 使用 profile 机制，默认不启动，需要显式指定 --profile tui
+# ──────────────────────────────────────────────────────────────
+
 services:
   # ─────────── 核心引擎容器（后台常驻，持续生成数据）───────────
   engine:
     build:
-      context: .
-      dockerfile: engine/Dockerfile
-    container_name: petnode-engine
-    restart: unless-stopped
+      context: .                        # 构建上下文为 C_end_Simulator/ 目录
+      dockerfile: engine/Dockerfile     # 使用 engine 专属 Dockerfile
+    container_name: petnode-engine       # 容器名称（便于识别）
+    restart: unless-stopped             # 崩溃时自动重启（除非手动停止）
     volumes:
-      # 将 output_data 挂载到宿主机，方便 TUI/GUI 读取
+      # bind mount: 将宿主机 output_data/ 映射到容器内 /app/output_data/
+      # 这是 Engine 与 TUI/GUI 之间的"数据桥梁"
       - ./output_data:/app/output_data
     environment:
-      - PYTHONUNBUFFERED=1
+      - PYTHONUNBUFFERED=1              # 禁用 Python 输出缓冲（确保日志实时输出）
     # 默认参数：2 只狗，200 ticks，每 1 秒一轮，种子 42
+    # 可在此处修改参数来调整模拟行为
     command: ["--dogs", "2", "--ticks", "200", "--interval", "1", "--seed", "42", "--output-dir", "/app/output_data"]
 
   # ─────────── TUI 终端监控界面容器（PetNodeOS）───────────
+  # 使用 Docker profile 机制——默认不随 docker compose up 启动，
+  # 需要显式指定 --profile tui 才会构建和运行
   # 启动方式: docker compose --profile tui run --rm tui
-  # TUI 通过 output_data/ 共享卷与 Engine 通信（前后端分离）
+  #
+  # 关键配置解释：
+  #   - stdin_open: true  → 保持容器标准输入打开（等价于 docker run -i）
+  #   - tty: true         → 分配伪终端 PTY（等价于 docker run -t）
+  #   - 以上两项是让 Textual TUI 在 Docker 中正常渲染交互界面的必要条件
+  #   - depends_on: engine → 确保 Engine 先启动
+  #   - --rm              → 退出后自动删除容器（TUI 是一次性交互会话）
   tui:
     build:
-      context: .
-      dockerfile: ui_tui/Dockerfile
+      context: .                        # 构建上下文为 C_end_Simulator/ 目录
+      dockerfile: ui_tui/Dockerfile     # 使用 TUI 专属 Dockerfile
     container_name: petnode-tui
-    stdin_open: true
-    tty: true
+    stdin_open: true                    # 保持标准输入（-i），Textual 需要接收键盘输入
+    tty: true                           # 分配伪终端（-t），Textual 需要 TTY 来渲染全屏 UI
     volumes:
+      # 与 Engine 共享同一个 output_data/ 目录（读数据 + 写指令）
       - ./output_data:/app/output_data
     depends_on:
-      - engine
+      - engine                          # TUI 依赖 Engine（先启动引擎才有数据可看）
     command: ["--output-dir", "/app/output_data"]
     profiles:
-      - tui
+      - tui                             # 归入 tui profile，默认不启动
