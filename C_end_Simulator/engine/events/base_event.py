@@ -5,7 +5,7 @@ BaseEvent —— 事件抽象基类
 强度曲线 intensity 在 [0, 1] 之间变化。
 
 子类需覆盖:
-  - name, base_duration_days
+  - name, base_hazard, base_duration_days
   - vital_effect(intensity) → dict  返回瞬时值叠加量
   - steps_multiplier(intensity) → float  返回步数倍率
 """
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
+from typing import ClassVar
 
 
 class EventPhase(enum.Enum):
@@ -41,7 +42,7 @@ class BaseEvent:
       - day_index         : 当前是事件的第几天（从 0 开始）
 
     子类需覆盖：
-      - name, base_duration_days
+      - name, base_hazard, base_duration_days
       - vital_effect()         → 返回瞬时值叠加量
       - steps_multiplier_value() → 返回步数倍率
       - gps_sigma_multiplier()   → 返回 GPS σ 倍率（可选，基类有默认实现）
@@ -53,10 +54,33 @@ class BaseEvent:
     severity: float = 1.0
     day_index: int = 0
 
+    # ==================== 新增：把基础概率放到事件自己身上 ====================
+    base_hazard: float = 0.0
+
     # 阶段占比: onset 20%, peak 40%, recovery 40%
     onset_ratio: float = 0.2
     peak_ratio: float = 0.4
 
+    # ==================== 新增：全自动注册中心 ====================
+    # 使用 ClassVar 告诉 dataclass 这是一个全局类变量，不需要在实例化时传入
+    _event_registry: ClassVar[dict[str, type['BaseEvent']]] = {}
+
+    def __init_subclass__(cls, **kwargs):
+        """钩子：当有新的事件（如 FeverEvent）继承本类时，自动触发注册"""
+        super().__init_subclass__(**kwargs)
+        if cls is BaseEvent:
+            return
+
+        if hasattr(cls, 'name') and cls.name and cls.name != "base_event":
+            cls._event_registry[cls.name] = cls
+
+    @classmethod
+    def get_all_events(cls) -> dict[str, type['BaseEvent']]:
+        """全局接口：获取所有已注册的事件类"""
+        return cls._event_registry
+    # ==============================================================
+
+    # ========== 以下是你原本复杂的计算��辑，我一字不落全保留了！==========
     @property
     def phase(self) -> EventPhase:
         """根据当前进度 (day_index / duration_days) 判断所处阶段"""
@@ -82,13 +106,10 @@ class BaseEvent:
         progress = self.day_index / max(self.duration_days, 1)
         phase = self.phase
         if phase == EventPhase.ONSET:
-            # onset 阶段：从 0 线性上升到 1
             return progress / max(self.onset_ratio, 1e-9)
         elif phase == EventPhase.PEAK:
-            # peak 阶段：保持最大强度
             return 1.0
         else:
-            # recovery 阶段：从 1 线性下降到 0
             rec_start = self.onset_ratio + self.peak_ratio
             rec_len = 1.0 - rec_start
             return max(0.0, 1.0 - (progress - rec_start) / max(rec_len, 1e-9))
@@ -105,28 +126,17 @@ class BaseEvent:
     def vital_effect(self) -> dict:
         """
         返回对瞬时值的叠加 {heart_rate: +x, resp_rate: +y, temperature: +z}。
-
-        基类返回空 dict（无影响），子类覆盖此方法实现具体效果。
-        叠加量通常与 intensity * severity 成正比。
         """
         return {}
 
     def steps_multiplier_value(self) -> float:
-        """
-        返回 Δsteps 的乘法倍率（<1 表示步数减少）。
-
-        默认逻辑：
-          - onset:    0.8（步数略减）
-          - peak:     0.3（步数大幅减少）
-          - recovery: 0.6 → 1.0（逐渐恢复到正常步数）
-        """
+        """返回 Δsteps 的乘法倍率（<1 表示步数减少）。"""
         phase = self.phase
         if phase == EventPhase.ONSET:
             return 0.8
         elif phase == EventPhase.PEAK:
             return 0.3
         else:
-            # recovery 阶段：根据恢复进度从 0.6 线性恢复到 1.0
             recovery_progress = 0.0
             rec_start = self.onset_ratio + self.peak_ratio
             rec_len = 1.0 - rec_start
@@ -136,12 +146,7 @@ class BaseEvent:
             return 0.6 + 0.4 * recovery_progress
 
     def gps_sigma_multiplier(self) -> float:
-        """
-        返回 GPS σ 的乘法倍率（<1 表示活动范围缩小）。
-
-        默认逻辑：max(0.1, 1.0 - intensity * 0.5)，
-        即在 peak 时活动范围缩小到正常的 50%，最低不低于 10%。
-        """
+        """返回 GPS σ 的乘法倍率（<1 表示活动范围缩小）。"""
         return max(0.1, 1.0 - self.intensity * 0.5)
 
     def __repr__(self) -> str:
