@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import tests
+import pytest
 
 from engine.models.dog_profile import DogProfile
 from engine.models.smart_collar import SmartCollar
