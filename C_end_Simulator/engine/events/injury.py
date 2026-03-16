@@ -15,6 +15,7 @@ class InjuryEvent(BaseEvent):
     """
 
     name: str = "injury"
+    base_hazard: float = 0.01  # 新增这一行：基础日触发概率 1%
     base_duration_days: int = 10
 
     def vital_effect(self) -> dict:

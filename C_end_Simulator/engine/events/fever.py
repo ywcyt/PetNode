@@ -15,6 +15,7 @@ class FeverEvent(BaseEvent):
     """
 
     name: str = "fever"
+    base_hazard: float = 0.02  # 新增这一行：基础日触发概率 2%
     base_duration_days: int = 7
 
     def vital_effect(self) -> dict:
