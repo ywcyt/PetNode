@@ -1,0 +1,2 @@
+# Flask 数据服务器的 Python 依赖
+flask>=3.0,<4.0

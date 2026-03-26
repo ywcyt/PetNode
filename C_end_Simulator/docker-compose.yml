@@ -55,6 +55,10 @@ services:
     # 默认参数：2 只狗，200 ticks，每 1 秒一轮，种子 42
     # 可在此处修改参数来调整模拟行为
     command: ["--dogs", "2", "--ticks", "200", "--interval", "1", "--seed", "42", "--output-dir", "/app/output_data"]
+      # ... 其他配置不变 ...
+    depends_on:
+      flask-server:
+        condition: service_healthy    # 等 Flask 健康检查通过后再启动 Engine
 
   # ─────────── TUI 终端监控界面容器（PetNodeOS）───────────
   # 使用 Docker profile 机制——默认不随 docker compose up 启动，
