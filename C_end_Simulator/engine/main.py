@@ -10,10 +10,11 @@ engine/main.py —— 核心调度器
   - 优雅退出：Ctrl-C / SIGTERM
 
 数据流向：
-  record → HttpExporter → Flask 服务器（永久保存）
+  record → HttpExporter → 云服务器上的 Flask
                 │
                 └── 断网 → offline_cache/（自动补发后删除）
   record → FileExporter → realtime_stream.jsonl（TUI 缓冲，滚动截断，最多 500 行）
+地址: http://<你的服务器IP>:5000/api/data
 
 用法::
 
@@ -204,10 +205,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output-dir", type=str, default=None,
         help="输出目录（默认 output_data/）",
     )
-    parser.add_argument(                                             # ← 🆕 新增参数
+    parser.add_argument(
         "--api-url", type=str,
-        default="http://flask-server:5000/api/data",
-        help="Flask 服务器 API 地址（默认 http://flask-server:5000/api/data）",
+        default="http://172.28.69.242:5000/api/data",
+        help="Flask 服务器 API 地址（默认 http://172.28.69.242:5000/api/data）",
     )
     parser.add_argument(
         "--log-level", type=str, default="INFO",
@@ -228,7 +229,7 @@ def run(
     seed: int | None = None,
     output_dir: str | Path | None = None,
     num_users: int = 1,
-    api_url: str = "http://flask-server:5000/api/data",              # ← 🆕 新增参数
+    api_url: str = "http://172.28.69.242:5000/api/data",              # ← 🆕 新增参数
 ) -> list[dict]:
     """
     运行模拟引擎主循环（支持多线程并行生成数据）。

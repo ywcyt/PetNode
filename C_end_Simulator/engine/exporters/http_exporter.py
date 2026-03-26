@@ -45,8 +45,7 @@ logger = logging.getLogger("engine.exporters.http")
 
 # 默认的 Flask 服务器 API 地址
 # "flask-server" 是 docker-compose 中 Flask 容器的服务名（Docker DNS 自动解析）
-# 在 Docker 网络内，容器之间通过服务名互相访问，不需要知道 IP 地址
-_DEFAULT_API_URL = "http://flask-server:5000/api/data"
+_DEFAULT_API_URL = "http://172.28.69.242:5000/api/data"
 
 # 默认的离线缓存目录：C_end_Simulator/output_data/offline_cache/
 # 当 Flask 服务器不可达时，数据暂存到这个目录，网络恢复后自动补发
