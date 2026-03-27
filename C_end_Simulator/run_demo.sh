@@ -36,7 +36,7 @@ fi
 echo "🚀 正在拉起 3 个并发容器（通过公网域名 pppetnode.com 访问云端）..."
 
 # 获取宿主机的实际 IP 地址（Docker 容器需要访问这个 IP）
-HOST_IP=$(hostname -I | awk '{print $1}')
+HOST_IP=$(curl -s ifconfig.me || curl -s ip.sb || echo "47.109.200.132")
 echo "📍 检测到宿主机 IP: ${HOST_IP}"
 
 # Engine 容器 1：通过公网域名访问 Flask 容器
