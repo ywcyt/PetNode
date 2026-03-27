@@ -35,12 +35,17 @@ fi
 # 4. 直接使用底层 docker run 命令并发启动 3 个 Engine 容器（客户端）
 echo "🚀 正在拉起 3 个并发容器（通过公网域名 pppetnode.com 访问云端）..."
 
+# 获取宿主机的实际 IP 地址（Docker 容器需要访问这个 IP）
+HOST_IP=$(hostname -I | awk '{print $1}')
+echo "📍 检测到宿主机 IP: ${HOST_IP}"
+
 # Engine 容器 1：通过公网域名访问 Flask 容器
 # 关键点：--api-url 使用 pppetnode.com:5000，强制走公网 DNS → 公网 IP → NAT → Docker 端口映射
 docker run -d \
     --name demo_engine_1 \
     -v $(pwd)/output_data/engine1:/app/output_data \
     -e PYTHONUNBUFFERED=1 \
+    --add-host="pppetnode.com:${HOST_IP}" \
     petnode-engine:latest \
     --dogs 2 \
     --interval 1 \
@@ -54,6 +59,7 @@ docker run -d \
     --name demo_engine_2 \
     -v $(pwd)/output_data/engine2:/app/output_data \
     -e PYTHONUNBUFFERED=1 \
+    --add-host="pppetnode.com:${HOST_IP}" \
     petnode-engine:latest \
     --dogs 2 \
     --interval 1 \
@@ -67,6 +73,7 @@ docker run -d \
     --name demo_engine_3 \
     -v $(pwd)/output_data/engine3:/app/output_data \
     -e PYTHONUNBUFFERED=1 \
+    --add-host="pppetnode.com:${HOST_IP}" \
     petnode-engine:latest \
     --dogs 2 \
     --interval 1 \
