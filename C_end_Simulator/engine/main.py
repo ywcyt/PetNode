@@ -22,6 +22,33 @@ engine/main.py —— 核心调度器
     python -m engine.main --users 2 --dogs 6 --ticks 500   # 2 用户 6 只狗, 500 ticks
     python -m engine.main --seed 42 --interval 2           # 可复现, 每 2 秒一轮
 """
+"""
+
+┌─ 你的服务器 47.109.200.132（pppetnode.com）─────────────────────┐
+│                                                              │
+│  ┌──────────────────┐                                        │
+│  │  Flask 容器 (云端) │ ← 监听 0.0.0.0:5000                    │
+│  │  petnode-flask    │                                       │
+│  └────────▲─────────┘                                        │
+│           │                                                  │
+│           │ HTTP POST http://pppetnode.com:5000/api/data     │
+│           │ （走公网域名解析，模拟真实网络通信）                    │
+│           │                                                  │
+│  ┌────────┴───┬───────────┬───────────┬── ... ──┐            │
+│  │ engine-1   │ engine-2  │ engine-3  │  engine-10│          │
+│  │ (客户端1)   │ (客户端2)  │ (客户端3)  │ (客户端10)│           │
+│  └────────────┴───────────┴───────────┴──────────┘           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+         ▲
+         │  你的电脑也能连：
+         │  API_URL=http://pppetnode.com:5000/api/data
+         │  python -m engine.main --dogs 2
+┌────────┴──────────┐
+│   你的电脑（本地）  │
+└───────────────────┘
+
+"""
 
 from __future__ import annotations
 
@@ -207,7 +234,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--api-url", type=str,
-        default="http://172.28.69.242:5000/api/data",
+        # default="http://172.28.69.242:5000/api/data",
+        default = "http://pppetnode.com:5000/api/data",
         help="Flask 服务器 API 地址（默认 http://172.28.69.242:5000/api/data）",
     )
     parser.add_argument(
@@ -229,7 +257,8 @@ def run(
     seed: int | None = None,
     output_dir: str | Path | None = None,
     num_users: int = 1,
-    api_url: str = "http://172.28.69.242:5000/api/data",              # ← 🆕 新增参数
+    # api_url: str = "http://172.28.69.242:5000/api/data",
+    api_url: str = "http://pppetnode.com:5000/api/data",
 ) -> list[dict]:
     """
     运行模拟引擎主循环（支持多线程并行生成数据）。
