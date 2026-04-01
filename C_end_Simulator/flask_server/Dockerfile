@@ -15,7 +15,7 @@
 #   - 本容器（服务端）监听 5000 端口接收数据
 #   - 两者是完全独立的容器，只通过 Docker 网络通信（老师要求！）
 #
-# ENTRYPOINT + CMD 设计（与 engine/Dockerfile 保持一致的风格）：
+# CMD 设计（与 engine/Dockerfile 保持一致的风格）：
 #   - CMD 使用 gunicorn 生产级 WSGI 服务器运行 Flask 应用
 #   - 通过环境变量 PORT / DATA_DIR 控制运行参数
 # ──────────────────────────────────────────────────────────────
