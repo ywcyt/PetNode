@@ -1,2 +1,3 @@
 # Flask 数据服务器的 Python 依赖
 flask>=3.0,<4.0
+gunicorn>=22.0,<24.0          # 生产级 WSGI 服务器（替代 Flask 自带开发服务器）

@@ -16,8 +16,8 @@
 #   - 两者是完全独立的容器，只通过 Docker 网络通信（老师要求！）
 #
 # ENTRYPOINT + CMD 设计（与 engine/Dockerfile 保持一致的风格）：
-#   - ENTRYPOINT 固定为 python app.py（始终运行 Flask 服务器）
-#   - 通过环境变��� PORT / DATA_DIR 控制运行参数
+#   - CMD 使用 gunicorn 生产级 WSGI 服务器运行 Flask 应用
+#   - 通过环境变量 PORT / DATA_DIR 控制运行参数
 # ──────────────────────────────────────────────────────────────
 
 # 基础镜像：Python 3.12 精简版（与 Engine 保持一致）
@@ -57,6 +57,9 @@ ENV PORT=5000
 EXPOSE 5000
 
 # ── 第 6 步：启动 Flask 服务器 ──
-# 使用 python -m 运行，确保 flask_server 作为包被正确识别
-# 这样 from flask_server.storage.file_storage import FileStorage 能正常工作
-CMD ["python", "-m", "flask_server.app"]
+# 使用 gunicorn 生产级 WSGI 服务器（替代 Flask 自带的开发服务器）
+# 原因：Werkzeug 3.1+ 的开发服务器会校验 Host 头，拒绝非 localhost 的请求
+#       （例如 Docker 容器间通过容器名通信时 Host 头是 "flask-server:5000"，
+#        会被开发服务器拒绝并返回 400 "Host is not trusted"）
+# gunicorn 是生产级服务器，不存在此限制，且性能更好、更稳定
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--access-logfile", "-", "flask_server.app:app"]
