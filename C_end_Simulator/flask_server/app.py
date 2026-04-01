@@ -1,8 +1,7 @@
 from __future__ import annotations  # 允许使用 Python 3.10+ 的类型注解语法
 
 import app
-from werkzeug.serving import WSGIRequestHandler
-app.config["TRUSTED_HOSTS"] = ["*"]
+
 
 
 """
