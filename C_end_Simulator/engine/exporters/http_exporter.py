@@ -26,6 +26,8 @@ HttpExporter —— 🔮 未来阶段占位：发送给远程服务器 API
 
 from __future__ import annotations  # 允许使用 Python 3.10+ 类型注解语法
 
+import hashlib  # SHA-256 哈希算法（用于 HMAC 签名）
+import hmac  # HMAC 消息认证码（用于防篡改签名）
 import json  # JSON 序列化（将 dict 转为 JSON 字符串，用于缓存文件读写）
 import logging  # 日志记录
 import os  # 操作系统级文件操作（fsync 强制刷盘）
@@ -89,6 +91,7 @@ class HttpExporter(BaseExporter):
         cache_dir: str | Path | None = None,  # 离线缓存目录
         timeout: int = _REQUEST_TIMEOUT,  # 请求超时秒数
         api_key: str | None = None,  # API Key，默认从环境变量 API_KEY 读取
+        hmac_key: str | None = None,  # HMAC 密钥，默认从环境变量 HMAC_KEY 读取
     ) -> None:
         # 保存 Flask 服务器的 API 地址
         self._url = api_url
@@ -109,6 +112,9 @@ class HttpExporter(BaseExporter):
         _api_key = api_key or os.environ.get("API_KEY", "petnode_secret_key_2026")
         # 所有通过此 session 发出的请求都会自动带上 Authorization 头
         self._session.headers.update({"Authorization": f"Bearer {_api_key}"})
+
+        # 保存 HMAC 密钥：优先使用传入参数，其次读环境变量，最后用默认值
+        self._hmac_key = hmac_key or os.environ.get("HMAC_KEY", "petnode_hmac_secret_2026")
 
         # 线程锁：Engine 使用 ThreadPoolExecutor 多线程生成数据，
         # 多个线程可能同时调用 export()，需要锁保护缓存文件写入
@@ -139,14 +145,8 @@ class HttpExporter(BaseExporter):
             3. 失败（网络异常/超时/状态码非 200）→ 调用 _cache_record() 缓存到文件
         """
         try:
-            # 发送 HTTP POST 请求到 Flask 服务器
-            # json=record: requests 自动将 dict 序列化为 JSON 并设置 Content-Type
-            # timeout: 超过指定秒数未响应则抛出 Timeout 异常
-            resp = self._session.post(
-                self._url,  # 目标 URL: http://flask-server:5000/api/data
-                json=record,  # 请求体: 自动序列化为 JSON
-                timeout=self._timeout,  # 超时时间: 5 秒
-            )
+            # 使用 _sign_and_post() 计算 HMAC 签名并发送请求
+            resp = self._sign_and_post(record)
 
             # raise_for_status(): 如果状态码不是 2xx，抛出 HTTPError 异常
             # 例如 Flask 返回 400（数据格式错误）或 500（服务器内部错误）
@@ -224,12 +224,8 @@ class HttpExporter(BaseExporter):
                     record = json.loads(line)
 
                     try:
-                        # 尝试重新发送到 Flask
-                        resp = self._session.post(
-                            self._url,  # 目标 URL
-                            json=record,  # 请求体
-                            timeout=self._timeout,  # 超时时间
-                        )
+                        # 尝试重新发送到 Flask（带 HMAC 签名）
+                        resp = self._sign_and_post(record)
                         # 检查响应状态码
                         resp.raise_for_status()
 
@@ -280,6 +276,47 @@ class HttpExporter(BaseExporter):
         )
 
     # ── 内部方法 ──
+
+    def _sign_and_post(self, record: dict) -> requests.Response:
+        """
+        对 record 计算 HMAC-SHA256 签名，并通过 HTTP POST 发送到 Flask 服务器。
+
+        使用 sort_keys=True 保证同一个 dict 每次序列化的 JSON 字符串一致，
+        从而保证 Engine 和 Flask 双方对同一条记录算出相同的签名。
+
+        Parameters
+        ----------
+        record : dict
+            要发送的数据记录
+
+        Returns
+        -------
+        requests.Response
+            HTTP 响应对象
+        """
+        # 将 record 序列化为 JSON bytes
+        # sort_keys=True: 保证 key 排序一致，避免同一 dict 因 key 顺序不同产生不同签名
+        # ensure_ascii=False: 中文等非 ASCII 字符不转义（节省字节数）
+        body_bytes = json.dumps(record, ensure_ascii=False, sort_keys=True).encode("utf-8")
+
+        # 用 HMAC-SHA256 计算签名
+        sig = hmac.new(
+            self._hmac_key.encode("utf-8"),  # 共享密钥
+            body_bytes,  # 待签名的请求体
+            hashlib.sha256,  # 哈希算法
+        ).hexdigest()
+
+        # 发送请求：使用 data=body_bytes 而不是 json=record，
+        # 确保发送的字节流与签名时完全一致
+        return self._session.post(
+            self._url,
+            data=body_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "X-Signature": sig,
+            },
+            timeout=self._timeout,
+        )
 
     def _cache_record(self, record: dict) -> None:
         """
