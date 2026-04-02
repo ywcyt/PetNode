@@ -95,8 +95,6 @@ logger = logging.getLogger("flask_server")
 
 # 创建 Flask 应用实例（__name__ 让 Flask 知道当前模块的位置）
 app = Flask(__name__)
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_host=1, x_proto=1, x_for=1)
 
 # ────────────────── 初始化存储层 ──────────────────
 

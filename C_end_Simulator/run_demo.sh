@@ -10,7 +10,7 @@ docker network create petnode-net 2>/dev/null || true
 
 # 2. 构建镜像
 echo "🔨 正在构建 Docker 镜像..."
-docker build -f flask_server/Dockerfile -t petnode-flask:latest .
+docker build --no-cache -f flask_server/Dockerfile -t petnode-flask:latest .
 docker build -f engine/Dockerfile -t petnode-engine:latest .
 
 # 2. 清理旧数据
