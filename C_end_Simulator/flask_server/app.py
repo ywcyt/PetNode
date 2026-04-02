@@ -62,6 +62,8 @@ app.py —— PetNode S端 Flask 数据服务器
 
 # ────────────────── 导入依赖 ──────────────────
 
+import hashlib  # SHA-256 哈希算法（用于 HMAC 签名验证）
+import hmac  # HMAC 消息认证码（用于防篡改验签）
 import logging  # Python 标准日志库
 import os  # 读取环境变量
 from datetime import datetime  # 获取当前时间（用于日志）
@@ -169,12 +171,49 @@ def receive_data():
             "message": "API Key 无效",
         }), 401  # HTTP 状态码 401 Unauthorized
 
-    # ── 第 1 步：解析请求体中的 JSON 数据 ──
+    # ── 第 1 步：HMAC 签名验证 ──
+    # 从环境变量读取 HMAC 密钥，默认值为 petnode_hmac_secret_2026
+    hmac_key = os.environ.get("HMAC_KEY", "petnode_hmac_secret_2026")
+
+    # 从请求头中获取 Engine 发来的签名
+    incoming_sig = request.headers.get("X-Signature", "")
+
+    # 如果缺少 X-Signature 头，直接拒绝
+    if not incoming_sig:
+        logger.warning(
+            "HMAC 验签失败（缺少 X-Signature 头）: IP=%s",
+            request.remote_addr,
+        )
+        return jsonify({
+            "status": "error",
+            "message": "缺少 HMAC 签名",
+        }), 403  # HTTP 状态码 403 Forbidden
+
+    # 用密钥 + 原始请求体重新计算 HMAC-SHA256
+    # request.data 是原始 bytes，必须与 Engine 发送的字节流完全一致
+    expected_sig = hmac.new(
+        hmac_key.encode("utf-8"),
+        request.data,
+        hashlib.sha256,
+    ).hexdigest()
+
+    # 使用 hmac.compare_digest() 安全对比（防止时序攻击）
+    if not hmac.compare_digest(incoming_sig, expected_sig):
+        logger.warning(
+            "HMAC 验签失败（签名不匹配）: IP=%s",
+            request.remote_addr,
+        )
+        return jsonify({
+            "status": "error",
+            "message": "HMAC 签名验证失败，数据可能被篡改",
+        }), 403  # HTTP 状态码 403 Forbidden
+
+    # ── 第 2 步：解析请求体中的 JSON 数据 ──
     # request.get_json() 会自动解析 Content-Type: application/json 的请求体
     # silent=True 表示解析失败时返回 None 而不是抛异常
     record = request.get_json(force=True, silent=True)
 
-    # ── 第 2 步：校验数据是否合法 ──
+    # ── 第 3 步：校验数据是否合法 ──
     # 如果请求体不是合法的 JSON，或者不是字典类型，返回 400 错误
     if record is None or not isinstance(record, dict):
         # 记录警告日志：谁发了个非法请求
@@ -189,7 +228,7 @@ def receive_data():
             "message": "请求体必须是合法的 JSON 对象",  # 错误描述
         }), 400  # HTTP 状态码 400
 
-    # ── 第 3 步：将数据保存到存储层 ──
+    # ── 第 4 步：将数据保存到存储层 ──
     try:
         # 调用存储层的 save 方法（当前是写文件，未来可能是写 MySQL）
         storage.save(record)
@@ -202,10 +241,10 @@ def receive_data():
             "message": f"数据保存失败: {exc}",  # 错误原因
         }), 500  # HTTP 状态码 500
 
-    # ── 第 4 步：更新计数器 ──
+    # ── 第 5 步：更新计数器 ──
     _total_received += 1  # 累加接收总数
 
-    # ── 第 5 步：记录成功日志 ──
+    # ── 第 6 步：记录成功日志 ──
     # 记录关键信息：来源 IP、设备 ID、累计接收条数
     logger.info(
         "数据已保存: IP=%s, device_id=%s, 累计=%d 条",
@@ -214,7 +253,7 @@ def receive_data():
         _total_received,  # 累计接收总条数
     )
 
-    # ── 第 6 步：返回成功响应 ──
+    # ── 第 7 步：返回成功响应 ──
     return jsonify({
         "status": "ok",  # 状态标记：成功
         "message": "数据已保存",  # 成功描述
