@@ -124,6 +124,7 @@ def receive_data():
 
     Engine 的 HttpExporter 会调用:
         POST http://flask-server:5000/api/data
+        Authorization: Bearer <api_key>
         Content-Type: application/json
         Body: {"device_id": "...", "timestamp": "...", "heart_rate": 80, ...}
 
@@ -131,10 +132,42 @@ def receive_data():
     -------
     JSON 响应:
         成功: {"status": "ok", "message": "数据已保存"}, 200
-        失败: {"status": "error", "message": "错误原因"}, 400
+        失败: {"status": "error", "message": "错误原因"}, 400 / 401
     """
     # 引用全局计数器（需要 global 声明才能修改）
     global _total_received
+
+    # ── 第 0 步：API Key 鉴权 ──
+    # 从环境变量读取期望的 API Key，默认值为 petnode_secret_key_2026
+    expected_key = os.environ.get("API_KEY", "petnode_secret_key_2026")
+
+    # 从请求头 Authorization 中提取 token（格式为 Bearer <key>）
+    auth_header = request.headers.get("Authorization", "")
+
+    # 检查 Authorization 头是否存在且格式正确
+    if not auth_header or not auth_header.startswith("Bearer "):
+        logger.warning(
+            "鉴权失败（缺少或格式错误的 Authorization 头）: IP=%s",
+            request.remote_addr,
+        )
+        return jsonify({
+            "status": "error",
+            "message": "缺少 Authorization 头",
+        }), 401  # HTTP 状态码 401 Unauthorized
+
+    # 提取 Bearer 后面的 token
+    token = auth_header[len("Bearer "):]
+
+    # 校验 token 是否与期望的 API Key 一致
+    if token != expected_key:
+        logger.warning(
+            "鉴权失败（API Key 无效）: IP=%s",
+            request.remote_addr,
+        )
+        return jsonify({
+            "status": "error",
+            "message": "API Key 无效",
+        }), 401  # HTTP 状态码 401 Unauthorized
 
     # ── 第 1 步：解析请求体中的 JSON 数据 ──
     # request.get_json() 会自动解析 Content-Type: application/json 的请求体

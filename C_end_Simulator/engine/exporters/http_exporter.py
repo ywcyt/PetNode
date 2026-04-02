@@ -88,6 +88,7 @@ class HttpExporter(BaseExporter):
         api_url: str = _DEFAULT_API_URL,  # Flask 服务器地址
         cache_dir: str | Path | None = None,  # 离线缓存目录
         timeout: int = _REQUEST_TIMEOUT,  # 请求超时秒数
+        api_key: str | None = None,  # API Key，默认从环境变量 API_KEY 读取
     ) -> None:
         # 保存 Flask 服务器的 API 地址
         self._url = api_url
@@ -103,6 +104,11 @@ class HttpExporter(BaseExporter):
         # 创建 requests.Session（复用 TCP 连接，比每次 requests.post() 新建连接更高效）
         # Session 会自动管理 HTTP Keep-Alive，减少握手开销
         self._session = requests.Session()
+
+        # 设置 API Key 鉴权头：优先使用传入参数，其次读环境变量，最后用默认值
+        _api_key = api_key or os.environ.get("API_KEY", "petnode_secret_key_2026")
+        # 所有通过此 session 发出的请求都会自动带上 Authorization 头
+        self._session.headers.update({"Authorization": f"Bearer {_api_key}"})
 
         # 线程锁：Engine 使用 ThreadPoolExecutor 多线程生成数据，
         # 多个线程可能同时调用 export()，需要锁保护缓存文件写入

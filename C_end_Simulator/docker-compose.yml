@@ -34,6 +34,7 @@ services:
       - PYTHONUNBUFFERED=1                    # 禁用 Python 输出缓冲
       - DATA_DIR=/app/data                    # FileStorage 数据目录
       - PORT=5000                             # Flask 监听端口
+      - API_KEY=petnode_secret_key_2026       # API Key 鉴权密钥
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" ]
       interval: 10s                           # 每 10 秒检查一次
@@ -53,6 +54,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1              # 禁用 Python 输出缓冲（确保日志实时输出）
       - API_URL=http://flask-server:5000/api/data
+      - API_KEY=petnode_secret_key_2026 # API Key 鉴权密钥
     # 默认参数：2 只狗，200 ticks，每 1 秒一轮，种子 42
     # 可在此处修改参数来调整模拟行为
     command: ["--dogs", "2", "--ticks", "200", "--interval", "1", "--seed", "42", "--output-dir", "/app/output_data"]

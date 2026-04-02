@@ -27,6 +27,7 @@ docker run -d \
     -e PYTHONUNBUFFERED=1 \
     -e DATA_DIR=/app/data \
     -e PORT=5000 \
+    -e API_KEY=petnode_secret_key_2026 \
     petnode-flask:latest
 
 echo "⏳ 等待 Flask 服务器启动..."
@@ -50,6 +51,7 @@ for i in 1 2 3; do
         --network petnode-net \
         -v $(pwd)/output_data/engine$i:/app/output_data \
         -e PYTHONUNBUFFERED=1 \
+        -e API_KEY=petnode_secret_key_2026 \
         petnode-engine:latest \
         --dogs 2 \
         --interval 1 \
