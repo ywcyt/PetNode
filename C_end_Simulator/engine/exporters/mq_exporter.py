@@ -220,8 +220,9 @@ class MqExporter(BaseExporter):
                 mandatory=True,
             )
 
-            # 在 confirm_delivery 模式下，ok 应为 True；否则视为失败
-            if ok is not True:
+            # 在 pika 不同版本/模式下，basic_publish 可能返回 True 或 None。
+            # 失败场景通常以异常（例如 UnroutableError / NackError）体现。
+            if ok is False:
                 raise RuntimeError("RabbitMQ publish not confirmed")
 
     def _cache_record(self, record: dict) -> None:

@@ -113,11 +113,12 @@ def main() -> int:
     rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
     queue_name = os.environ.get("RABBITMQ_QUEUE", "petnode.records")
 
-    storage = _build_storage()
-
     # 连接循环：RabbitMQ 重启/网络抖动时可自动重连
     while True:
+        storage = None
+        connection = None
         try:
+            storage = _build_storage()
             params = pika.URLParameters(rabbitmq_url)
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
@@ -164,18 +165,30 @@ def main() -> int:
         except KeyboardInterrupt:
             logger.info("收到 Ctrl-C，mq-worker 退出")
             try:
-                storage.close()
+                if storage is not None:
+                    storage.close()
             except Exception:
                 logger.debug("关闭 storage 失败", exc_info=True)
+            try:
+                if connection is not None and connection.is_open:
+                    connection.close()
+            except Exception:
+                logger.debug("关闭 RabbitMQ connection 失败", exc_info=True)
             return 0
 
         except Exception as exc:
             # 连接/消费异常：等待后重连
             logger.error("mq-worker 异常，将重连: %s", exc)
             try:
-                storage.close()
+                if storage is not None:
+                    storage.close()
             except Exception:
                 logger.debug("关闭 storage 失败", exc_info=True)
+            try:
+                if connection is not None and connection.is_open:
+                    connection.close()
+            except Exception:
+                logger.debug("关闭 RabbitMQ connection 失败", exc_info=True)
             time.sleep(3)
 
 
