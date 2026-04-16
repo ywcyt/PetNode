@@ -30,6 +30,8 @@ import json  # JSON 序列化（将 dict 转为 JSON 字符串，用于缓存文
 import logging  # 日志记录
 import os  # 操作系统级文件操作（fsync 强制刷盘）
 import threading  # 线程锁（Engine 的主循环使用多线程，需要保护共享资源）
+import time  # 🆕 新增：用于生成鉴权时间戳
+import hashlib  # 🆕 新增：用于生成 MD5 签名
 from pathlib import Path  # 路径操作（跨平台兼容）
 
 import requests  # HTTP 客户端库（用于发送 POST 请求到 Flask 服务器）
@@ -59,6 +61,10 @@ _REQUEST_TIMEOUT = 5
 # 每次 flush() 最多补发多少条缓存记录
 # 防止网络恢复后一次性补发过多导致 Flask 过载
 _MAX_RETRY_PER_FLUSH = 50
+
+# 🆕 新增：安全鉴权配置常量
+_DEVICE_TOKEN = "PETNODE_DEVICE_V1"
+_SECRET_TOKEN = "petnode_super_secret_2026"
 
 
 class HttpExporter(BaseExporter):
@@ -116,6 +122,20 @@ class HttpExporter(BaseExporter):
         # 记录初始化日志
         logger.info("HttpExporter 已就绪: url=%s, cache=%s", self._url, self._cache_dir)
 
+    # ── 🆕 新增：鉴权头生成方法 ──
+    def _generate_headers(self, record: dict) -> dict:
+        """根据 record 内容动态生成带有 MD5 签名的 Header"""
+        current_timestamp = str(int(time.time()))
+        # 尝试获取狗的ID，如果没有就给个默认值
+        dog_id = record.get("device_id", record.get("dog_id", "unknown_dog"))
+        raw_string = f"{dog_id}{current_timestamp}{_SECRET_TOKEN}"
+        signature = hashlib.md5(raw_string.encode('utf-8')).hexdigest()
+        return {
+            "X-Token": _DEVICE_TOKEN,
+            "X-Timestamp": current_timestamp,
+            "X-Signature": signature
+        }
+
     # ── BaseExporter 接口实现 ──
 
     def export(self, record: dict) -> None:
@@ -133,14 +153,32 @@ class HttpExporter(BaseExporter):
             3. 失败（网络异常/超时/状态码非 200）→ 调用 _cache_record() 缓存到文件
         """
         try:
+            # 🆕 新增：在发送前生成安全校验头
+            secure_headers = self._generate_headers(record)
+
             # 发送 HTTP POST 请求到 Flask 服务器
             # json=record: requests 自动将 dict 序列化为 JSON 并设置 Content-Type
             # timeout: 超过指定秒数未响应则抛出 Timeout 异常
+            
+            # ❌ 原代码：
+            # resp = self._session.post(
+            #     self._url,  # 目标 URL: http://flask-server:5000/api/data
+            #     json=record,  # 请求体: 自动序列化为 JSON
+            #     timeout=self._timeout,  # 超时时间: 5 秒
+            # )
+            
+            # 🆕 修改为带 headers 的发送：
             resp = self._session.post(
-                self._url,  # 目标 URL: http://flask-server:5000/api/data
-                json=record,  # 请求体: 自动序列化为 JSON
-                timeout=self._timeout,  # 超时时间: 5 秒
+                self._url,
+                json=record,
+                headers=secure_headers,  # 挂载安全头
+                timeout=self._timeout,
             )
+
+            # 🆕 新增：拦截鉴权错误，防止密码错误的数据被当成断网缓存起来
+            if resp.status_code in [401, 403]:
+                logger.error("鉴权失败 (状态码 %d)，服务器拒绝接收数据。请检查 Token。", resp.status_code)
+                return
 
             # raise_for_status(): 如果状态码不是 2xx，抛出 HTTPError 异常
             # 例如 Flask 返回 400（数据格式错误）或 500（服务器内部错误）
@@ -218,12 +256,31 @@ class HttpExporter(BaseExporter):
                     record = json.loads(line)
 
                     try:
+                        # 🆕 新增：补发时也要生成安全头
+                        secure_headers = self._generate_headers(record)
+                        
                         # 尝试重新发送到 Flask
+                        # ❌ 原代码：
+                        # resp = self._session.post(
+                        #     self._url,  # 目标 URL
+                        #     json=record,  # 请求体
+                        #     timeout=self._timeout,  # 超时时间
+                        # )
+                        
+                        # 🆕 修改为带 headers 的发送：
                         resp = self._session.post(
-                            self._url,  # 目标 URL
-                            json=record,  # 请求体
-                            timeout=self._timeout,  # 超时时间
+                            self._url,
+                            json=record,
+                            headers=secure_headers,
+                            timeout=self._timeout,
                         )
+                        
+                        # 🆕 新增：处理补发过程中的鉴权失败
+                        if resp.status_code in [401, 403]:
+                            logger.error("补发数据时鉴权失败，该记录将被丢弃。")
+                            all_sent = False
+                            break
+
                         # 检查响应状态码
                         resp.raise_for_status()
 
