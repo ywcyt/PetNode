@@ -17,6 +17,7 @@ test_api_key_auth.py —— 测试 Flask 服务器 API Key 鉴权机制
 
 import argparse
 import sys
+import time
 
 try:
     import requests
@@ -136,6 +137,7 @@ def main():
     for name, func in tests:
         passed = run_test(name, func)
         results.append((name, passed))
+        time.sleep(0.5)  # 每个测试之间等 0.5 秒，避免 gunicorn worker 竞争
 
     # ── 汇总结果 ──
     print(f"\n{'='*60}")
