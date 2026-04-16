@@ -1,0 +1,20 @@
+2026-04-16 15:47:35,410 INFO o.a.j.u.JMeterUtils: Setting Locale to en_EN
+2026-04-16 15:47:35,425 INFO o.a.j.JMeter: Loading user properties from: D:\JMeter\apache-jmeter-5.6.3\bin\user.properties
+2026-04-16 15:47:35,425 INFO o.a.j.JMeter: Loading system properties from: D:\JMeter\apache-jmeter-5.6.3\bin\system.properties
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: Copyright (c) 1998-2024 The Apache Software Foundation
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: Version 5.6.3
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: java.version=17.0.10
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: java.vm.name=OpenJDK 64-Bit Server VM
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: os.name=Windows 11
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: os.arch=amd64
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: os.version=10.0
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: file.encoding=GBK
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: java.awt.headless=null
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: Max memory     =1073741824
+2026-04-16 15:47:35,432 INFO o.a.j.JMeter: Available Processors =32
+2026-04-16 15:47:35,438 INFO o.a.j.JMeter: Default Locale=English (EN)
+2026-04-16 15:47:35,438 INFO o.a.j.JMeter: JMeter  Locale=English (EN)
+2026-04-16 15:47:35,438 INFO o.a.j.JMeter: JMeterHome=D:\JMeter\apache-jmeter-5.6.3
+2026-04-16 15:47:35,438 INFO o.a.j.JMeter: user.dir  =D:\bot\PetNode
+2026-04-16 15:47:35,438 INFO o.a.j.JMeter: PWD       =D:\bot\PetNode
+2026-04-16 15:47:40,670 INFO o.a.j.JMeter: IP: 26.75.132.31 Name: LAPTOP-CQFDG1IV FullName: LAPTOP-CQFDG1IV

@@ -100,7 +100,8 @@ services:
     build:
       context: .
       dockerfile: flask_server/Dockerfile
-    container_name: petnode-mq-worker
+    # 注意：不要设置 container_name，才能使用 docker compose --scale 横向扩容
+    # 扩容后容器名会自动变为 <project>-mq-worker-1,2,3...
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1

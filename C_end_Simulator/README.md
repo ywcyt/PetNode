@@ -1112,6 +1112,57 @@ docker compose logs -f engine
 docker compose ps
 ```
 
+#### 4.2.1 面向消息队列的 Worker 集群自动扩缩容
+
+为了按访问量自动启停 Docker 服务，本项目提供了脚本：`scripts/mq_autoscaler.py`。
+
+该脚本会周期性读取 RabbitMQ 队列积压量：
+
+- `backlog = messages_ready + messages_unacknowledged`
+- `target_replicas = ceil(backlog / target_messages_per_worker)`
+- 将目标副本数限制在 `[min_replicas, max_replicas]`
+
+当目标副本数变化时，脚本会自动执行：
+
+```bash
+docker compose -f docker-compose.yml up -d --no-recreate --scale mq-worker=<N> mq-worker
+```
+
+启动方式（建议在宿主机执行）：
+
+```bash
+cd C_end_Simulator
+
+# 先启动基础服务
+docker compose up -d rabbitmq mongodb flask-server engine mq-worker
+
+# 启动自动扩缩容控制器（按队列访问量自动调整 mq-worker 副本）
+python scripts/mq_autoscaler.py \
+    --compose-file ./docker-compose.yml \
+    --service mq-worker \
+    --queue petnode.records \
+    --min-replicas 1 \
+    --max-replicas 8 \
+    --target-messages-per-worker 200 \
+    --poll-interval 5 \
+    --cooldown 20
+```
+
+常用验证命令：
+
+```bash
+# 查看 mq-worker 当前副本/实例
+docker compose ps mq-worker
+
+# 查看队列实时积压
+curl -u guest:guest http://127.0.0.1:15672/api/queues/%2F/petnode.records
+```
+
+注意事项：
+
+- `docker-compose.yml` 中 `mq-worker` 不应设置 `container_name`，否则无法 scale 到多个实例。
+- 该方案是基于 Docker Compose 的轻量集群自动扩缩；生产环境建议迁移到 Kubernetes HPA。
+
 #### 4.3 docker-compose.yml 配置详解
 
 **engine 服务**：

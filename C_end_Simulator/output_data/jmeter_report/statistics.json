@@ -1,0 +1,34 @@
+{
+  "Publish to RabbitMQ" : {
+    "transaction" : "Publish to RabbitMQ",
+    "sampleCount" : 16000,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 15.625187499999969,
+    "medianResTime" : 15.0,
+    "minResTime" : 4.0,
+    "maxResTime" : 75.0,
+    "pct1ResTime" : 22.0,
+    "pct2ResTime" : 25.0,
+    "pct3ResTime" : 32.0,
+    "throughput" : 2427.1844660194174,
+    "receivedKBytesPerSec" : 701.6080097087379,
+    "sentKBytesPerSec" : 1942.9709425250305
+  },
+  "Total" : {
+    "transaction" : "Total",
+    "sampleCount" : 16000,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 15.625187499999969,
+    "medianResTime" : 15.0,
+    "minResTime" : 4.0,
+    "maxResTime" : 75.0,
+    "pct1ResTime" : 22.0,
+    "pct2ResTime" : 25.0,
+    "pct3ResTime" : 32.0,
+    "throughput" : 2427.1844660194174,
+    "receivedKBytesPerSec" : 701.6080097087379,
+    "sentKBytesPerSec" : 1942.9709425250305
+  }
+}
