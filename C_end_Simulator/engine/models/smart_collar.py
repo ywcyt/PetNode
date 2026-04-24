@@ -247,7 +247,7 @@ class SmartCollar:
 
         # 组装最终输出记录（共 13 个字段）
         return {
-            "user_id": self.profile.user_id,           # 所属用户唯一标识
+#            "user_id": self.profile.user_id,           # 所属用户唯一标识
             "device_id": self.profile.dog_id,          # 设备（狗）唯一标识
             "timestamp": self.sim_time.isoformat(),    # 模拟时间戳 (ISO 8601)
             "behavior": self._behavior,                # 当前行为状态

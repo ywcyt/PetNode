@@ -36,7 +36,6 @@ class DogProfile:
     """
 
     dog_id: str = ""
-    user_id: str = ""                   # 所属用户 ID（一个用户可拥有多条狗）
     breed_size: str = "medium"          # small / medium / large
     age_stage: str = "adult"            # puppy / adult / senior
     traits: list[BaseTrait] = field(default_factory=list)
@@ -47,9 +46,6 @@ class DogProfile:
         # 如果没有指定 dog_id，则自动生成一个 12 位的十六进制唯一标识
         if not self.dog_id:
             self.dog_id = uuid.uuid4().hex[:12]
-        # 如果没有指定 user_id，则自动生成一个 8 位的十六进制唯一标识
-        if not self.user_id:
-            self.user_id = "user_" + uuid.uuid4().hex[:8]
 
     # ---------- 汇总 trait 提供的修正 ----------
     # 以下 property 将所有 trait 对基线指标的影响进行汇总：
