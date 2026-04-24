@@ -94,7 +94,6 @@ class DogProfile:
     @staticmethod
     def random_profile(
         rng: Optional[np.random.Generator] = None,
-        user_id: str = "",
     ) -> DogProfile:
         """随机生成一个 DogProfile（含 0~2 个 trait）"""
         if rng is None:
@@ -122,7 +121,6 @@ class DogProfile:
             traits = []
 
         return DogProfile(
-            user_id=user_id,
             breed_size=str(breed),
             age_stage=str(age),
             traits=traits,
@@ -131,6 +129,6 @@ class DogProfile:
     def __repr__(self) -> str:
         trait_names = [t.name for t in self.traits]
         return (
-            f"DogProfile(id={self.dog_id}, user={self.user_id}, "
+            f"DogProfile(id={self.dog_id},"
             f"breed={self.breed_size}, age={self.age_stage}, traits={trait_names})"
         )

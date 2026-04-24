@@ -168,7 +168,7 @@ class TestSchedulerRun:
     def test_records_have_correct_fields(self, tmp_path: Path):
         """每条记录都包含 13 个必需字段"""
         expected_keys = {
-            "user_id", "device_id", "timestamp", "behavior", "heart_rate",
+            "device_id", "timestamp", "behavior", "heart_rate",
             "resp_rate", "temperature", "steps", "battery",
             "gps_lat", "gps_lng", "event", "event_phase",
         }
@@ -232,7 +232,7 @@ class TestSchedulerRun:
         # device_id 和 user_id 由 uuid4 生成，不受 numpy seed 控制，需排除比较
         for a, b in zip(r1, r2):
             for key in a:
-                if key in ("device_id", "user_id"):
+                if key in ("device_id"):
                     continue
                 assert a[key] == b[key], f"key={key}: {a[key]} != {b[key]}"
 
@@ -241,45 +241,7 @@ class TestSchedulerRun:
         records = run(num_dogs=1, num_ticks=0, seed=42, output_dir=tmp_path)
         assert len(records) == 0
 
-    def test_records_contain_user_id(self, tmp_path: Path):
-        """每条记录应包含 user_id 字段"""
-        records = run(num_dogs=2, num_ticks=5, seed=42, output_dir=tmp_path)
-        for r in records:
-            assert "user_id" in r
-            assert isinstance(r["user_id"], str)
-            assert len(r["user_id"]) > 0
 
-    def test_multi_user_multi_dog(self, tmp_path: Path):
-        """2 用户 4 只狗，每个用户应分配 2 只狗"""
-        records = run(
-            num_dogs=4, num_ticks=3, seed=42,
-            output_dir=tmp_path, num_users=2,
-        )
-        assert len(records) == 12  # 4 dogs × 3 ticks
-        # 应有 2 个不同的 user_id
-        user_ids = {r["user_id"] for r in records}
-        assert len(user_ids) == 2
-        # 应有 4 个不同的 device_id
-        device_ids = {r["device_id"] for r in records}
-        assert len(device_ids) == 4
 
-    def test_single_user_multiple_dogs(self, tmp_path: Path):
-        """1 用户 3 只狗，所有记录的 user_id 应相同"""
-        records = run(
-            num_dogs=3, num_ticks=5, seed=42,
-            output_dir=tmp_path, num_users=1,
-        )
-        assert len(records) == 15  # 3 dogs × 5 ticks
-        user_ids = {r["user_id"] for r in records}
-        assert len(user_ids) == 1  # 所有狗属于同一用户
 
-    def test_user_id_in_jsonl_output(self, tmp_path: Path):
-        """JSONL 输出文件中每行应包含 user_id"""
-        run(num_dogs=2, num_ticks=5, seed=42, output_dir=tmp_path, num_users=2)
-        jsonl = tmp_path / "realtime_stream.jsonl"
-        lines = jsonl.read_text(encoding="utf-8").strip().splitlines()
-        assert len(lines) == 10  # 2 dogs × 5 ticks
-        for line in lines:
-            parsed = json.loads(line)
-            assert "user_id" in parsed
-            assert parsed["user_id"].startswith("user_")
+

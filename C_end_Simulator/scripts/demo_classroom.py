@@ -160,7 +160,6 @@ def _build_record(
     if timestamp is None:
         timestamp = f"2026-04-17T{index % 24:02d}:{(index * 3) % 60:02d}:00"
     return {
-        "user_id":      f"{_DEMO_USER_PREFIX}user_{index:04d}",
         "device_id":    f"demo_device_{index:04d}",
         "timestamp":    timestamp,
         "behavior":     behavior,
@@ -210,7 +209,6 @@ def step_auth_demo(base_url: str, api_key: str, hmac_key: str, timeout: int) -> 
 
     # 一条最小合法 payload（后面几个负面测试不需要合法字段）
     _minimal = {
-        "user_id":     "demo_classroom_auth_test",
         "device_id":   "demo_device_auth",
         "timestamp":   "2026-04-17T00:00:00",
         "behavior":    "resting",
@@ -369,7 +367,6 @@ def step_single_upload(base_url: str, api_key: str, hmac_key: str, timeout: int)
     print(f"{'─'*40}")
 
     record = {
-        "user_id":     f"{_DEMO_USER_PREFIX}single_user",
         "device_id":   _DEMO_DEVICE_SINGLE,
         "timestamp":   "2026-04-17T10:00:00",
         "behavior":    "running",
@@ -512,10 +509,10 @@ def step_cleanup_instruction(batch: int) -> None:
 
 {_BOLD}{_GREEN}# 方法 1：直接在服务器上执行（需要先 SSH 登录）{_RESET}
 {_CYAN}docker exec petnode-mongodb mongosh petnode --eval \\
-  "db.received_records.deleteMany({{user_id: /^{_DEMO_USER_PREFIX}/}})"
+  
 {_RESET}
 {_BOLD}{_GREEN}# 方法 2：SSH 一行命令（替换 <SERVER_IP> 为实际服务器 IP）{_RESET}
-{_CYAN}ssh root@<SERVER_IP> 'docker exec petnode-mongodb mongosh petnode --eval "db.received_records.deleteMany({{user_id: /^{_DEMO_USER_PREFIX}/}})"'
+
 {_RESET}
 {_YELLOW}删除后可再次访问 GET /api/health 确认数据已清理。{_RESET}
 """)

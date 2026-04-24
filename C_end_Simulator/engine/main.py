@@ -324,12 +324,6 @@ def run(
     out_path = Path(output_dir) if output_dir else _DEFAULT_OUTPUT_DIR
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # ── 生成用户 ID 列表 ──
-    # 每个用户拥有一个唯一的 user_id，狗按轮询方式分配给用户
-    user_ids: list[str] = [
-        "user_" + uuid.uuid4().hex[:8] for _ in range(num_users)
-    ]
-    logger.info("已创建 %d 个用户: %s", num_users, user_ids)
 
     # ── 创建项圈（SmartCollar 实例）──
     # 每只狗使用 (seed + i) 作为随机种子，确保不同狗有不同的随机序列但整体可复现
@@ -341,12 +335,7 @@ def run(
             tick_interval=timedelta(minutes=tick_minutes),
             seed=dog_seed,
         )
-        collar.profile.user_id = user_ids[i % num_users]
         collars.append(collar)
-        logger.info(
-            "项圈 #%d 已创建: user=%s, %s",
-            i + 1, collar.profile.user_id, collar.profile,
-        )
 
     # ── 创建 exporters（数据导出器）──
 

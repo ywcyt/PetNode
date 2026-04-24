@@ -140,7 +140,6 @@ def main():
             tick_interval=timedelta(minutes=1),
             seed=args.seed + i,
         )
-        collar.profile.user_id = "user_local_test"
         collars.append(collar)
         print(f"   🐕 项圈 #{i+1}: device={collar.profile.dog_id}, "
               f"breed={collar.profile.breed_size}, age={collar.profile.age_stage}")
