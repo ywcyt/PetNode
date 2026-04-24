@@ -87,7 +87,6 @@ def test_single_upload(base_url: str, timeout: int) -> bool:
 
     # 构造一条完整的模拟数据（与 SmartCollar 输出格式完全一致）
     record = {
-        "user_id": "user_test_local",
         "device_id": "local_test_001",
         "timestamp": "2025-06-01T12:00:00",
         "behavior": "walking",
@@ -146,7 +145,6 @@ def test_batch_upload(base_url: str, timeout: int, count: int = 10) -> bool:
 
     for i in range(count):
         record = {
-            "user_id": "user_test_batch",
             "device_id": f"batch_device_{i:03d}",
             "timestamp": f"2025-06-01T12:{i:02d}:00",
             "behavior": ["sleeping", "resting", "walking", "running"][i % 4],

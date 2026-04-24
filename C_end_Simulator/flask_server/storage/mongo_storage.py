@@ -3,7 +3,6 @@ MongoStorage —— 将接收到的数据保存到 MongoDB
 
 为什么需要它？
 - FileStorage 把数据写到 JSONL 文件，适合早期阶段/离线分析；
-- MongoStorage 把数据写到 MongoDB，适合后续按 device_id / user_id / 时间范围查询、聚合、扩展。
 
 设计原则：
 - 仍然遵循 BaseStorage 接口（策略模式）：app.py 只调用 save()/close()，不关心底层。
@@ -87,7 +86,6 @@ class MongoStorage(BaseStorage):
         # 这些索引能提升按 user/device/时间的查询性能。
         try:
             self._collection.create_index([("device_id", 1), ("timestamp", 1)])
-            self._collection.create_index([("user_id", 1)])
         except Exception:
             # 索引创建失败不应阻塞主流程（例如权限受限），只记录日志
             logger.warning("MongoStorage 创建索引失败（将继续运行）", exc_info=True)

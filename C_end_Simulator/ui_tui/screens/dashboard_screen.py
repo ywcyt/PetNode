@@ -135,12 +135,10 @@ class DashboardScreen(Screen):
 
     def __init__(
         self,
-        user_id: str = "",
         num_dogs: int = 1,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
-        self._user_id = user_id
         self._num_dogs = num_dogs
         self._paused = False
         self._refresh_timer: Timer | None = None
@@ -153,10 +151,6 @@ class DashboardScreen(Screen):
 
             # 状态栏
             with Horizontal(id="status-bar"):
-                yield Static(
-                    f"👤 [bold]{self._user_id}[/bold]  🐕 ×{self._num_dogs}",
-                    id="user-info",
-                )
                 yield Static(
                     "🔄 [bold green]等待引擎...[/bold green]",
                     id="engine-status",
@@ -225,7 +219,6 @@ class DashboardScreen(Screen):
 
         # 记录日志
         log = self.query_one("#op-log", Log)
-        log.write_line(f"[系统] 用户 {self._user_id} 已登录，管理 {self._num_dogs} 只狗")
         log.write_line(f"[系统] 数据刷新间隔: {self._REFRESH_INTERVAL}s")
 
         # 启动定时刷新
