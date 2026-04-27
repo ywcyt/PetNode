@@ -157,7 +157,6 @@ Engine 每个 tick 为每只狗生成一条数据记录，结构如下：
 
 | 字段名 | 类型 | 必填 | 示例值 | 说明 |
 |--------|------|------|--------|------|
-| `user_id` | string | 是 | `"user_e3e073dd"` | 用户唯一标识 |
 | `device_id` | string | 是 | `"109f156a015a"` | 设备（狗项圈）唯一标识 |
 | `timestamp` | string | 是 | `"2025-06-01T00:01:00"` | ISO 8601 格式的模拟时间戳 |
 | `behavior` | string | 是 | `"sleeping"` | 行为状态：`sleeping` / `resting` / `walking` / `running` |
@@ -210,7 +209,6 @@ Engine 每个 tick 为每只狗生成一条数据记录，结构如下：
 
 ```json
 {
-  "user_id": "user_e3e073dd",
   "device_id": "109f156a015a",
   "timestamp": "2025-06-01T00:01:00",
   "behavior": "sleeping",
@@ -389,7 +387,6 @@ MongoDB / FileStorage
 | 索引 | 字段 | 用途 |
 |------|------|------|
 | 复合索引 | `(device_id: 1, timestamp: 1)` | 按设备 + 时间范围查询 |
-| 单字段索引 | `(user_id: 1)` | 按用户查询 |
 
 ### 8.2 FileStorage（降级 / 本地开发）
 
@@ -476,7 +473,7 @@ docker compose down                           # 停止所有服务
 
 ```bash
 # 1. 构造请求体
-BODY='{"user_id":"user_e3e073dd","device_id":"109f156a015a","timestamp":"2025-06-01T00:01:00","behavior":"sleeping","heart_rate":66.2,"resp_rate":8.5,"temperature":38.45,"steps":0,"battery":100,"gps_lat":29.57,"gps_lng":106.45,"event":null,"event_phase":null}'
+BODY='{"device_id":"109f156a015a","timestamp":"2025-06-01T00:01:00","behavior":"sleeping","heart_rate":66.2,"resp_rate":8.5,"temperature":38.45,"steps":0,"battery":100,"gps_lat":29.57,"gps_lng":106.45,"event":null,"event_phase":null}'
 
 # 2. 计算 HMAC-SHA256 签名
 SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "petnode_hmac_secret_2026" | awk '{print $2}')

@@ -36,7 +36,6 @@ _CORRECT_HMAC_KEY = "petnode_hmac_secret_2026"
 
 # 测试用的最小合法请求体
 _SAMPLE_PAYLOAD = {
-    "user_id": "user_test_hmac",
     "device_id": "test_device_hmac",
     "timestamp": "2026-04-01T00:00:00",
     "behavior": "walking",

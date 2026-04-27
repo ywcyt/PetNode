@@ -37,7 +37,7 @@ class BaseStorage(ABC):
     record : dict
         由 Engine 的 SmartCollar.generate_one_record() 产出的字典，
         通过 HttpExporter POST 到 Flask，再由 app.py 传入 storage.save()。
-        包含 13 个字段：user_id, device_id, timestamp, behavior,
+        包含 12 个字段： device_id, timestamp, behavior,
         heart_rate, resp_rate, temperature, steps, battery,
         gps_lat, gps_lng, event, event_phase
     """

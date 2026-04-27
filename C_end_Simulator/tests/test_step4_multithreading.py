@@ -51,9 +51,9 @@ class TestMultithreadingDataGeneration:
         assert len(all_records) == num_dogs * num_ticks
 
     def test_parallel_records_have_valid_fields(self):
-        """线程池并行生成的每条记录都应包含完整的 13 个必需字段"""
+        """线程池并行生成的每条记录都应包含完整的 12 个必需字段"""
         expected_keys = {
-            "user_id", "device_id", "timestamp", "behavior", "heart_rate",
+            "device_id", "timestamp", "behavior", "heart_rate",
             "resp_rate", "temperature", "steps", "battery",
             "gps_lat", "gps_lng", "event", "event_phase",
         }
@@ -226,8 +226,6 @@ class TestRunMultithreading:
             num_users=3,
         )
         assert len(records) == 60  # 6 dogs × 10 ticks
-        user_ids = {r["user_id"] for r in records}
-        assert len(user_ids) == 3
         device_ids = {r["device_id"] for r in records}
         assert len(device_ids) == 6
 

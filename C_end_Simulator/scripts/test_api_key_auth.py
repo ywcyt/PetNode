@@ -30,7 +30,6 @@ _CORRECT_API_KEY = "petnode_secret_key_2026"
 
 # 测试用的最小合法请求体
 _SAMPLE_PAYLOAD = {
-    "user_id": "user_test_auth",
     "device_id": "test_device_auth",
     "timestamp": "2026-04-01T00:00:00",
     "behavior": "walking",
