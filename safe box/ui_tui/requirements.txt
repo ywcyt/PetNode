@@ -1,0 +1,6 @@
+# ui_tui/requirements.txt —— TUI 终端界面依赖
+# textual: 现代终端 UI 框架，基于 Rich 构建
+#          用于渲染全屏终端界面（登录屏、数据监控大屏等）
+#          特点：纯终端渲染（使用 ANSI 转义序列），无需图形环境，
+#          因此可以打包进 Docker 容器中运行
+textual>=0.40,<1
