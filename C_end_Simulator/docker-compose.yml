@@ -60,6 +60,27 @@ services:
       timeout: 5s
       retries: 5
 
+  # ─────────── MySQL（数据库存储：按日期保存数据）───────────
+  mysql:
+    image: mysql:8
+    container_name: petnode-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"                          # MySQL 标准端口
+    environment:
+      - MYSQL_ROOT_PASSWORD=petnode_root_2026  # root 用户密码
+      - MYSQL_DATABASE=petnode               # 初始化数据库名
+      - MYSQL_USER=petnode_user              # 普通用户
+      - MYSQL_PASSWORD=petnode_password_2026 # 普通用户密码
+      - TZ=UTC                               # 时区设置为 UTC
+    volumes:
+      - mysql_data:/var/lib/mysql            # 数据持久化
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # ─────────── S端 Flask 数据服务器（必须先于 Engine 启动）───────────
   flask-server:
     build:
@@ -81,6 +102,15 @@ services:
       - MONGO_URI=mongodb://mongodb:27017
       - MONGO_DB=petnode
       - MONGO_COLLECTION=received_records
+
+      # MySQLStorage 配置（当 STORAGE_BACKEND=mysql 时使用）
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_DB=petnode
+      - MYSQL_USER=petnode_user
+      - MYSQL_PASSWORD=petnode_password_2026
+      - MYSQL_CHARSET=utf8mb4
+
       - PORT=5000                             # Flask 监听端口
       - API_KEY=petnode_secret_key_2026       # API Key 鉴权密钥
       - HMAC_KEY=petnode_hmac_secret_2026     # HMAC 签名密钥（防篡改）
@@ -91,6 +121,8 @@ services:
       retries: 3                              # 连续 3 次失败才标记为 unhealthy
     depends_on:
       mongodb:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
 
   # ─────────── MQ Worker（队列消费者：验签 + 入库）───────────
@@ -180,3 +212,4 @@ services:
 volumes:
   mongo_data:
   rabbitmq_data:
+  mysql_data:
