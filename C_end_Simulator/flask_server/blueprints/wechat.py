@@ -12,6 +12,9 @@ POST /api/v1/wechat/bind
     - 若请求头携带有效 Authorization Bearer token，则绑定到对应用户。
     - 否则自动创建新用户并完成绑定，返回 access_token。
 
+POST /api/v1/wechat/unbind
+    解除当前用户的微信绑定（需要有效 access_token）。
+
 微信 code2Session 调用行为：
     正式环境：需配置 WECHAT_APP_ID 和 WECHAT_APP_SECRET 环境变量。
     开发/测试：未配置时进入 mock 模式，openid = "mock_openid_{code前8位}"。
@@ -37,6 +40,7 @@ from ..auth import (
 )
 from ..db import get_db
 from ..helpers import err, ok
+from ..services.binding import bind_user_to_wechat, unbind_user_from_wechat
 
 wechat_bp = Blueprint("wechat", __name__, url_prefix="/api/v1/wechat")
 logger = logging.getLogger("flask_server.wechat")
@@ -216,11 +220,13 @@ def wechat_bind():
             return err(40101, "access_token 无效，请重新登录", 401)
 
     db = get_db()
+
+    # 先检查是否已存在绑定记录（在创建新用户之前）
     query = {"unionid": unionid} if unionid else {"openid": openid}
     existing = db["wechat_bindings"].find_one(query)
 
     if existing:
-        # 已绑定：若与当前 user_id 冲突则报错
+        # 已绑定：若与当前 user_id 冲突则报错，否则幂等返回
         if user_id and existing["user_id"] != user_id:
             return err(40901, "该微信身份已绑定其他系统账号", 409)
         return ok(
@@ -231,29 +237,45 @@ def wechat_bind():
             }
         )
 
-    # 创建新用户（若无 access_token）并写入绑定记录，共用同一时间戳
-    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
-
+    # 不存在绑定：创建新用户（若无 access_token），再绑定
     if not user_id:
+        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
         user_id = str(uuid.uuid4())
         db["users"].insert_one({"user_id": user_id, "created_at": now_iso})
 
-    # 写入绑定记录
-    doc: dict = {"user_id": user_id, "openid": openid, "bound_at": now_iso}
-    if unionid:
-        doc["unionid"] = unionid
-
     try:
-        db["wechat_bindings"].insert_one(doc)
-    except DuplicateKeyError:
+        result = bind_user_to_wechat(db, user_id, openid, unionid)
+    except PermissionError:
+        return err(40901, "该微信身份已绑定其他系统账号", 409)
+    except RuntimeError:
         return err(40901, "绑定冲突（并发写入），请稍后重试", 409)
 
-    access_token = create_access_token(user_id)
-    return ok(
-        {
-            "bind_status": "bound",
-            "user_id": user_id,
-            "bound_at": now_iso,
-            "access_token": access_token,
-        }
-    )
+    resp_data = {
+        "bind_status": result["bind_status"],
+        "user_id": result["user_id"],
+        "bound_at": result["bound_at"],
+    }
+    if result["bind_status"] == "bound":
+        resp_data["access_token"] = create_access_token(user_id)
+
+    return ok(resp_data)
+
+
+@wechat_bp.route("/unbind", methods=["POST"])
+@require_auth
+def wechat_unbind():
+    """
+    POST /api/v1/wechat/unbind
+
+    解除当前登录用户的微信绑定。
+
+    Request headers:
+        Authorization: Bearer <access_token>  必填
+
+    Response data:
+        unbind_status  string  "unbound" 或 "not_bound"
+        user_id        string  系统用户 ID
+        unbound_at     string|null  解绑时间（ISO 8601）；not_bound 时为 null
+    """
+    result = unbind_user_from_wechat(get_db(), g.user_id)
+    return ok(result)
