@@ -104,9 +104,9 @@ def require_auth(f):
                 jsonify({"code": 40101, "message": "Token 已过期，请重新登录", "data": None}),
                 401,
             )
-        except jwt.InvalidTokenError as exc:
+        except jwt.InvalidTokenError:
             return (
-                jsonify({"code": 40101, "message": f"Token 无效: {exc}", "data": None}),
+                jsonify({"code": 40101, "message": "Token 无效，请重新登录", "data": None}),
                 401,
             )
         return f(*args, **kwargs)

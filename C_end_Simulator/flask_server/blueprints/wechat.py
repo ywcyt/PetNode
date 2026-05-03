@@ -122,9 +122,10 @@ def wechat_auth():
     except requests.Timeout:
         return err(50001, "微信服务请求超时，请稍后重试", 502)
     except ValueError as exc:
-        return err(40102, f"微信 code 无效: {exc}", 400)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("code2session 异常: %s", exc)
+        logger.warning("code2session WeChat error: %s", exc)
+        return err(40102, "微信 code 无效或已过期", 400)
+    except requests.RequestException as exc:
+        logger.error("code2session request failed: %s", exc)
         return err(40102, "微信身份校验失败", 400)
 
     openid: str = wx_data.get("openid", "")
@@ -192,8 +193,8 @@ def wechat_bind():
             raise jwt.InvalidTokenError("Not a wx_identity token")
     except jwt.ExpiredSignatureError:
         return err(40103, "wx_identity_token 已过期，请重新调用 /wechat/auth", 401)
-    except jwt.InvalidTokenError as exc:
-        return err(40103, f"wx_identity_token 无效: {exc}", 401)
+    except jwt.InvalidTokenError:
+        return err(40103, "wx_identity_token 无效，请重新调用 /wechat/auth", 401)
 
     openid: str = wx_payload["openid"]
     unionid: str | None = wx_payload.get("unionid") or None
@@ -211,8 +212,8 @@ def wechat_bind():
             user_id = access_payload["sub"]
         except jwt.ExpiredSignatureError:
             return err(40101, "access_token 已过期，请重新登录", 401)
-        except jwt.InvalidTokenError as exc:
-            return err(40101, f"access_token 无效: {exc}", 401)
+        except jwt.InvalidTokenError:
+            return err(40101, "access_token 无效，请重新登录", 401)
 
     db = get_db()
     query = {"unionid": unionid} if unionid else {"openid": openid}
@@ -230,14 +231,14 @@ def wechat_bind():
             }
         )
 
-    # 创建新用户（若无 access_token）
+    # 创建新用户（若无 access_token）并写入绑定记录，共用同一时间戳
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
     if not user_id:
         user_id = str(uuid.uuid4())
-        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
         db["users"].insert_one({"user_id": user_id, "created_at": now_iso})
 
     # 写入绑定记录
-    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
     doc: dict = {"user_id": user_id, "openid": openid, "bound_at": now_iso}
     if unionid:
         doc["unionid"] = unionid

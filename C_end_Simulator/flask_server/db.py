@@ -19,6 +19,7 @@ import logging
 import os
 
 from pymongo import MongoClient, ASCENDING, DESCENDING
+from pymongo.errors import PyMongoError
 
 logger = logging.getLogger("flask_server.db")
 
@@ -79,5 +80,5 @@ def ensure_indexes() -> None:
         )
 
         logger.info("vx API MongoDB indexes ensured")
-    except Exception as exc:  # noqa: BLE001
+    except PyMongoError as exc:
         logger.warning("ensure_indexes failed (will continue): %s", exc)
