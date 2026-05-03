@@ -69,6 +69,17 @@ from datetime import datetime  # 获取当前时间（用于日志）
 
 from flask import Flask, request, jsonify  # Flask 核心：应用、请求对象、JSON 响应
 
+# vx API 依赖：PyJWT 用于 token 生成/验证，requests 用于调用微信 API
+try:
+    import jwt  # noqa: F401 (PyJWT)
+    import requests as _req  # noqa: F401
+except ImportError as _imp_err:
+    import sys
+    print(
+        f"[flask_server] 缺少依赖：{_imp_err}。请运行 pip install PyJWT requests",
+        file=sys.stderr,
+    )
+
 # 存储层采用策略模式：app.py 只依赖 BaseStorage.save()/close()。
 #
 # 本周任务：默认改为 MongoDB（MongoStorage）。
@@ -131,6 +142,29 @@ else:
 
 # 记录服务器启动以来接收到的总数据条数（用于日志和健康检查）
 _total_received: int = 0
+
+# ────────────────── 注册 vx API Blueprint ──────────────────
+
+# 将微信认证、用户信息、宠物遥测三个 Blueprint 挂载到 Flask 应用。
+# 路由前缀由各 Blueprint 自身定义（/api/v1/wechat/* / /api/v1/me / /api/v1/pets/*）。
+try:
+    from flask_server.blueprints import wechat_bp, users_bp, pets_bp
+    from flask_server.db import ensure_indexes
+except ImportError:
+    from .blueprints import wechat_bp, users_bp, pets_bp
+    from .db import ensure_indexes
+
+app.register_blueprint(wechat_bp)
+app.register_blueprint(users_bp)
+app.register_blueprint(pets_bp)
+
+# 在启动时尝试创建 MongoDB 索引。
+# ensure_indexes() 内部已处理 PyMongoError（MongoDB 未就绪时不阻断启动）。
+# 此处的 broad catch 仅应对极少数不可预期的启动异常（例如 MongoClient 配置解析错误）。
+try:
+    ensure_indexes()
+except Exception as _idx_exc:
+    logger.warning("vx API 索引初始化出现意外异常: %s", _idx_exc)
 
 # ────────────────── API 路由 ──────────────────
 
