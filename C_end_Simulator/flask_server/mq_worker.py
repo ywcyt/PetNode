@@ -38,13 +38,12 @@ import time
 
 import pika
 
-# storage 选择与 app.py 保持一致
 try:
-    from flask_server.storage.file_storage import FileStorage
     from flask_server.storage.mongo_storage import MongoStorage
+    from flask_server.storage.mysql_storage import MySQLStorage
 except Exception:
-    from .storage.file_storage import FileStorage
     from .storage.mongo_storage import MongoStorage
+    from .storage.mysql_storage import MySQLStorage
 
 
 logging.basicConfig(
@@ -53,24 +52,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("mq_worker")
-
-
-def _build_storage():
-    """与 flask_server.app.py 同逻辑：根据 STORAGE_BACKEND 选择存储实现。"""
-    backend = os.environ.get("STORAGE_BACKEND", "mongo").strip().lower()
-    data_dir = os.environ.get("DATA_DIR", "/app/data")
-
-    if backend == "file":
-        logger.info("mq-worker 使用 FileStorage: dir=%s", data_dir)
-        return FileStorage(data_dir=data_dir)
-
-    logger.info(
-        "mq-worker 使用 MongoStorage: uri=%s db=%s collection=%s",
-        os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
-        os.environ.get("MONGO_DB", "petnode"),
-        os.environ.get("MONGO_COLLECTION", "received_records"),
-    )
-    return MongoStorage()
 
 
 def _expected_api_key() -> str:
@@ -113,12 +94,33 @@ def main() -> int:
     rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
     queue_name = os.environ.get("RABBITMQ_QUEUE", "petnode.records")
 
+    mongo_storage = MongoStorage()
+    mysql_storage = MySQLStorage()
+
+    logger.info(
+        "mq-worker 已初始化 MongoStorage: uri=%s db=%s collection=%s",
+        os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
+        os.environ.get("MONGO_DB", "petnode"),
+        os.environ.get("MONGO_COLLECTION", "received_records"),
+    )
+    logger.info(
+        "mq-worker 已初始化 MySQLStorage: host=%s:%s db=%s",
+        os.environ.get("MYSQL_HOST", "localhost"),
+        os.environ.get("MYSQL_PORT", "3306"),
+        os.environ.get("MYSQL_DB", "petnode"),
+    )
+
+    def _persist_record(record: dict) -> None:
+        mongo_storage.save(record)
+        try:
+            mysql_storage.save(record)
+        except Exception as exc:
+            logger.warning("MySQL 持久化失败（Mongo 已保存）: %s", exc)
+
     # 连接循环：RabbitMQ 重启/网络抖动时可自动重连
     while True:
-        storage = None
         connection = None
         try:
-            storage = _build_storage()
             params = pika.URLParameters(rabbitmq_url)
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
@@ -149,10 +151,10 @@ def main() -> int:
 
                 # 3) 入库
                 try:
-                    storage.save(record)
+                    _persist_record(record)
                 except Exception as exc:
                     # 暂时性失败：让消息回队列，等待下次重投递（重传）
-                    logger.error("入库失败，将 NACK 并重试: %s", exc)
+                    logger.error("Mongo 入库失败，将 NACK 并重试: %s", exc)
                     ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
                     return
 
@@ -165,11 +167,6 @@ def main() -> int:
         except KeyboardInterrupt:
             logger.info("收到 Ctrl-C，mq-worker 退出")
             try:
-                if storage is not None:
-                    storage.close()
-            except Exception:
-                logger.debug("关闭 storage 失败", exc_info=True)
-            try:
                 if connection is not None and connection.is_open:
                     connection.close()
             except Exception:
@@ -179,11 +176,6 @@ def main() -> int:
         except Exception as exc:
             # 连接/消费异常：等待后重连
             logger.error("mq-worker 异常，将重连: %s", exc)
-            try:
-                if storage is not None:
-                    storage.close()
-            except Exception:
-                logger.debug("关闭 storage 失败", exc_info=True)
             try:
                 if connection is not None and connection.is_open:
                     connection.close()

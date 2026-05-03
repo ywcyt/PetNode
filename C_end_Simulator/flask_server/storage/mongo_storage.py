@@ -117,6 +117,38 @@ class MongoStorage(BaseStorage):
         # 插入一条文档
         self._collection.insert_one(doc)
 
+    def query_records(
+        self,
+        user_id: Optional[str] = None,
+        device_id: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """按用户、设备和时间范围查询实时记录。"""
+        criteria: dict[str, object] = {}
+
+        if user_id:
+            criteria["user_id"] = user_id
+        if device_id:
+            criteria["device_id"] = device_id
+        if start_time or end_time:
+            timestamp_filter: dict[str, object] = {}
+            if start_time:
+                timestamp_filter["$gte"] = start_time.isoformat()
+            if end_time:
+                timestamp_filter["$lte"] = end_time.isoformat()
+            criteria["timestamp"] = timestamp_filter
+
+        cursor = (
+            self._collection.find(criteria, {"_id": 0})
+            .sort("timestamp", -1)
+            .skip(max(offset, 0))
+            .limit(max(limit, 1))
+        )
+        return [dict(document) for document in cursor]
+
     def close(self) -> None:
         """关闭 MongoClient 连接。"""
         self._client.close()

@@ -19,7 +19,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, cast
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -46,7 +46,7 @@ EVENT_TYPES: dict[str, tuple[int, str, int]] = {
 }
 
 
-class MySQLStorage(BaseStorage):
+class MySQLStorageLegacy(BaseStorage):
     """MySQL 规范化存储实现。"""
 
     def __init__(
@@ -377,7 +377,7 @@ class MySQLStorage(BaseStorage):
         if cached is None:
             return
 
-        event_instance_id = int(cached["event_instance_id"])
+        event_instance_id = cast(int, cached["event_instance_id"])
         try:
             with self._connection.cursor() as cursor:
                 cursor.execute(
@@ -423,7 +423,7 @@ class MySQLStorage(BaseStorage):
         )
 
         if cached is not None and cached.get("event_name") == event_name:
-            event_instance_id = int(cached["event_instance_id"])
+            event_instance_id = cast(int, cached["event_instance_id"])
             try:
                 with self._connection.cursor() as cursor:
                     cursor.execute(
@@ -547,37 +547,6 @@ class MySQLStorage(BaseStorage):
             self._connection.close()
         except Exception:
             logger.warning("Error closing MySQLStorage connection", exc_info=True)
-"""
-MySQLStorage —— 将接收到的数据保存到 MySQL 规范化表结构
-
-对接方式：
-- 复用 crebas.sql 的实体划分：user / device / trait_type / event_type / event_instance / telemetry_record
-- Engine 每次上报的一条 JSON 记录，会被拆成多条 telemetry_record
-- 若记录中带有 event，则会自动维护 event_instance 的开启与关闭
-
-设计原则：
-- app.py 仍然只依赖 BaseStorage.save()/close()，不需要知道底层表结构
-- 支持自动建表和默认字典数据，避免人工预置主数据
-- device_id 仍保留为 Engine 的字符串 device_id 的稳定映射值，device_sn 保存原始字符串
-"""
-
-from __future__ import annotations
-
-import hashlib
-import json
-import logging
-import os
-from datetime import datetime
-from typing import Optional
-
-import pymysql
-from pymysql.cursors import DictCursor
-
-from .base_storage import BaseStorage
-
-logger = logging.getLogger("storage.mysql")
-
-
 class MySQLStorage(BaseStorage):
     """MySQL 规范化存储实现。"""
 
@@ -745,6 +714,22 @@ class MySQLStorage(BaseStorage):
                 KEY idx_timestamp (timestamp),
                 KEY idx_trait_type (trait_type_id),
                 KEY idx_event_instance (event_instance_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS anomaly_record (
+                anomaly_id BIGINT NOT NULL AUTO_INCREMENT,
+                user_id BIGINT NOT NULL,
+                device_id BIGINT NOT NULL,
+                event_instance_id BIGINT,
+                anomaly_code VARCHAR(80) NOT NULL,
+                anomaly_detail JSON,
+                record_timestamp DATETIME(3) NOT NULL,
+                create_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (anomaly_id),
+                KEY idx_device_time (device_id, record_timestamp),
+                KEY idx_user_time (user_id, record_timestamp),
+                KEY idx_anomaly_code (anomaly_code)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """,
         ]
@@ -1055,6 +1040,195 @@ class MySQLStorage(BaseStorage):
             logger.error("Failed to insert telemetry rows", exc_info=True)
             raise
 
+    @staticmethod
+    def _detect_anomaly(record: dict) -> tuple[bool, str, dict[str, object]]:
+        """判断记录是否属于异常，并返回简要描述。"""
+        event_name = record.get("event")
+        event_phase = record.get("event_phase")
+
+        if event_name not in (None, ""):
+            return True, f"event:{event_name}", {
+                "event": event_name,
+                "event_phase": event_phase,
+            }
+
+        details: dict[str, object] = {}
+        thresholds = {
+            "heart_rate": (30.0, 180.0),
+            "resp_rate": (8.0, 60.0),
+            "temperature": (36.0, 40.5),
+        }
+
+        for field, (minimum, maximum) in thresholds.items():
+            value = record.get(field)
+            if value is None:
+                continue
+
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+
+            if numeric_value < minimum:
+                details[field] = {"value": numeric_value, "rule": f"<{minimum}"}
+            elif numeric_value > maximum:
+                details[field] = {"value": numeric_value, "rule": f">{maximum}"}
+
+        if details:
+            return True, "threshold_breach", details
+
+        return False, "", {}
+
+    def _save_anomaly(
+        self,
+        user_id: int,
+        device_id: int,
+        event_instance_id: Optional[int],
+        record_timestamp: datetime,
+        anomaly_code: str,
+        anomaly_detail: dict[str, object],
+    ) -> None:
+        now = self._utc_now()
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO anomaly_record (
+                        user_id, device_id, event_instance_id, anomaly_code, anomaly_detail, record_timestamp, create_time
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        user_id,
+                        device_id,
+                        event_instance_id,
+                        anomaly_code,
+                        json.dumps(anomaly_detail, ensure_ascii=False),
+                        record_timestamp,
+                        now,
+                    ),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to insert anomaly record", exc_info=True)
+            raise
+
+    @staticmethod
+    def _rows_to_dicts(cursor) -> list[dict]:
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def query_anomalies(
+        self,
+        user_key: Optional[str] = None,
+        device_key: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """按用户、设备和时间范围查询异常记录。"""
+        sql = [
+            "SELECT a.anomaly_id, a.user_id, u.username, a.device_id, d.device_sn, d.device_name, d.pet_name, ",
+            "a.event_instance_id, a.anomaly_code, a.anomaly_detail, a.record_timestamp, a.create_time ",
+            "FROM anomaly_record a ",
+            "LEFT JOIN `user` u ON u.user_id = a.user_id ",
+            "LEFT JOIN device d ON d.device_id = a.device_id ",
+            "WHERE 1=1",
+        ]
+        params: list[object] = []
+
+        if user_key:
+            if user_key.isdigit():
+                sql.append(" AND a.user_id = %s")
+                params.append(int(user_key))
+            else:
+                sql.append(" AND u.username = %s")
+                params.append(user_key)
+        if device_key:
+            if device_key.isdigit():
+                sql.append(" AND a.device_id = %s")
+                params.append(int(device_key))
+            else:
+                sql.append(" AND d.device_sn = %s")
+                params.append(device_key)
+        if start_time is not None:
+            sql.append(" AND a.record_timestamp >= %s")
+            params.append(start_time)
+        if end_time is not None:
+            sql.append(" AND a.record_timestamp <= %s")
+            params.append(end_time)
+
+        sql.append(" ORDER BY a.record_timestamp DESC, a.anomaly_id DESC LIMIT %s OFFSET %s")
+        params.extend([max(limit, 1), max(offset, 0)])
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute("".join(sql), params)
+                return self._rows_to_dicts(cursor)
+        except pymysql.Error:
+            logger.error("Failed to query anomalies", exc_info=True)
+            raise
+
+    def query_profile(
+        self,
+        user_key: Optional[str] = None,
+        device_key: Optional[str] = None,
+    ) -> dict[str, list[dict]]:
+        """查询固定档案信息（用户、设备、特质、事件字典）。"""
+        try:
+            with self._connection.cursor() as cursor:
+                result: dict[str, list[dict]] = {}
+
+                user_sql = "SELECT user_id, username, phone, nick_name, create_time, update_time FROM `user` WHERE 1=1"
+                user_params: list[object] = []
+                if user_key:
+                    if user_key.isdigit():
+                        user_sql += " AND user_id = %s"
+                        user_params.append(int(user_key))
+                    else:
+                        user_sql += " AND username = %s"
+                        user_params.append(user_key)
+                cursor.execute(user_sql, user_params)
+                result["users"] = self._rows_to_dicts(cursor)
+
+                device_sql = (
+                    "SELECT device_id, user_id, device_sn, device_name, pet_name, is_online, activate_time, create_time, update_time "
+                    "FROM device WHERE 1=1"
+                )
+                device_params: list[object] = []
+                if user_key:
+                    if user_key.isdigit():
+                        device_sql += " AND user_id = %s"
+                        device_params.append(int(user_key))
+                    else:
+                        device_sql += " AND user_id IN (SELECT user_id FROM `user` WHERE username = %s)"
+                        device_params.append(user_key)
+                if device_key:
+                    if device_key.isdigit():
+                        device_sql += " AND device_id = %s"
+                        device_params.append(int(device_key))
+                    else:
+                        device_sql += " AND device_sn = %s"
+                        device_params.append(device_key)
+                cursor.execute(device_sql, device_params)
+                result["devices"] = self._rows_to_dicts(cursor)
+
+                cursor.execute(
+                    "SELECT trait_type_id, trait_code, trait_name, trait_unit, create_time FROM trait_type ORDER BY trait_type_id"
+                )
+                result["traits"] = self._rows_to_dicts(cursor)
+
+                cursor.execute(
+                    "SELECT event_type_id, event_code, event_name, event_level, create_time FROM event_type ORDER BY event_type_id"
+                )
+                result["events"] = self._rows_to_dicts(cursor)
+
+                return result
+        except pymysql.Error:
+            logger.error("Failed to query profile", exc_info=True)
+            raise
+
     # ------------------------------------------------------------------
     # BaseStorage API
     # ------------------------------------------------------------------
@@ -1071,22 +1245,34 @@ class MySQLStorage(BaseStorage):
         now = self._utc_now()
 
         device_id = self._ensure_device(device_sn, now)
+        is_anomaly, anomaly_code, anomaly_detail = self._detect_anomaly(record)
+        if not is_anomaly:
+            self._ensure_active_event(
+                device_id=device_id,
+                event_name=None,
+                event_phase=None,
+                record_timestamp=record_timestamp,
+                now=now,
+            )
+            return
+
         event_name = record.get("event")
         event_phase = record.get("event_phase")
         event_instance_id = self._ensure_active_event(
             device_id=device_id,
-            event_name=str(event_name).strip() if event_name not in (None, "") else None,
+            event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
             event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
             record_timestamp=record_timestamp,
             now=now,
         )
 
-        self._insert_telemetry_rows(
+        self._save_anomaly(
             user_id=self.default_user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,
             record_timestamp=record_timestamp,
-            record=record,
+            anomaly_code=anomaly_code,
+            anomaly_detail=anomaly_detail,
         )
 
     def close(self) -> None:
