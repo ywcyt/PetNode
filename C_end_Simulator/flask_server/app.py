@@ -158,11 +158,13 @@ app.register_blueprint(wechat_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(pets_bp)
 
-# 在启动时尝试创建 MongoDB 索引（失败不阻断服务，仅警告）
+# 在启动时尝试创建 MongoDB 索引。
+# ensure_indexes() 内部已处理 PyMongoError（MongoDB 未就绪时不阻断启动）。
+# 此处的 broad catch 仅应对极少数不可预期的启动异常（例如 MongoClient 配置解析错误）。
 try:
     ensure_indexes()
-except Exception as _idx_exc:  # noqa: BLE001
-    logger.warning("vx API MongoDB 索引创建失败，将在首次请求时重试: %s", _idx_exc)
+except Exception as _idx_exc:
+    logger.warning("vx API 索引初始化出现意外异常: %s", _idx_exc)
 
 # ────────────────── API 路由 ──────────────────
 

@@ -345,13 +345,12 @@ def get_pet_events(pet_id: str):
         return err(42201, "limit 参数必须为整数", 422)
 
     # 只返回有 event 的记录（event 不为 null）
-    query: dict = {
-        "device_id": pet_id,
-        "event": {"$ne": None, "$exists": True, "$type": "string"},
-    }
-
+    # 当 event_type 指定时直接用精确匹配，否则用排除 null 的条件
+    query: dict = {"device_id": pet_id}
     if event_type:
         query["event"] = event_type
+    else:
+        query["event"] = {"$ne": None, "$exists": True, "$type": "string"}
 
     # cursor 优先（向前翻页），否则用 start/end
     if cursor:
