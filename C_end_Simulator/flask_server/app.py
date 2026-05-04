@@ -185,8 +185,8 @@ def _handle_query_request(
     try:
         start_time = _parse_iso_datetime(request.args.get("start_time"), "start_time")
         end_time = _parse_iso_datetime(request.args.get("end_time"), "end_time")
-    except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+    except ValueError:
+        return jsonify({"status": "error", "message": "start_time/end_time 必须是合法的 ISO 8601 时间"}), 400
 
     if source == "mongo":
         if kind not in {"records", "stream"}:
