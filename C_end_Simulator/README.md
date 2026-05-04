@@ -1048,12 +1048,20 @@ PetNodeOS 终端界面基于 [Textual](https://textual.textualize.io/) 框架构
 
 `flask_server/` 是 PetNode 的**服务端**，使用 Flask + Gunicorn 提供 HTTP RESTful API，并支持 RabbitMQ 消息队列通道。
 
+当前数据库分工是：MongoDB 保存所有实时上报数据，MySQL 只保存固定档案信息（如用户/设备基础信息）和异常事件记录。
+
 ##### 2.9.1 RESTful API 接口
 
 | 接口 | 方法 | 说明 |
 |------|------|------|
 | `/api/data` | POST | 接收 Engine 上报的项圈数据，鉴权+验签后持久化存储 |
+| `/api/records` | GET | 统一查询接口，按用户、设备、时间范围查询 Mongo 或 MySQL |
+| `/api/users/<user_key>/records` | GET | 按用户查询，支持 source= mongo/mysql |
+| `/api/devices/<device_key>/records` | GET | 按设备查询，支持 source= mongo/mysql |
+| `/api/profile` | GET | 查询 MySQL 固定档案信息（用户、设备、特质、事件字典） |
 | `/api/health` | GET | 健康检查，返回服务状态和累计接收记录数 |
+
+查询接口支持的常用参数：`source=mongo|mysql`、`kind=records|anomalies|profile`、`user_id`、`device_id`、`start_time`、`end_time`、`limit`、`offset`。Mongo 默认返回实时记录；MySQL 默认返回异常记录，`kind=profile` 时返回固定档案信息。
 
 ##### 2.9.2 鉴权机制（Bearer Token）
 
