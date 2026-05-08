@@ -54,12 +54,16 @@ def mock_mongo(monkeypatch):
 def app():
     """创建 Flask test app，注册所有 vx Blueprint。"""
     from flask import Flask
-    from flask_server.blueprints import wechat_bp, users_bp, pets_bp
+    from flask_server.blueprints import (
+        wechat_bp, users_bp, pets_bp, devices_bp, family_bp,
+    )
 
     flask_app = Flask(__name__)
     flask_app.register_blueprint(wechat_bp)
     flask_app.register_blueprint(users_bp)
     flask_app.register_blueprint(pets_bp)
+    flask_app.register_blueprint(devices_bp)
+    flask_app.register_blueprint(family_bp)
     flask_app.config["TESTING"] = True
     return flask_app
 
@@ -475,3 +479,126 @@ class TestEvents:
         assert resp.status_code == 200
         assert len(data["data"]["items"]) == 3
         assert data["data"]["next_cursor"] is not None
+
+
+class TestDevicesAndPetsExtra:
+    def test_bind_and_unbind_device(self, client, mock_mongo):
+        mock_mongo["received_records"].insert_one(
+            {"device_id": "dev_bind_001", "timestamp": "2026-05-01T10:00:00"}
+        )
+        token = _create_access_token("user_bind_001")
+        resp = client.post(
+            "/api/v1/devices/bind",
+            json={"device_id": "dev_bind_001", "pet_name": "阿黄", "breed": "柯基"},
+            headers=_auth_header(token),
+        )
+        data = _parse(resp)
+        assert resp.status_code == 200
+        assert data["data"]["pet_id"] == "dev_bind_001"
+
+        resp2 = client.post(
+            "/api/v1/devices/dev_bind_001/unbind",
+            headers=_auth_header(token),
+        )
+        data2 = _parse(resp2)
+        assert resp2.status_code == 200
+        assert data2["data"]["unbind_status"] == "unbound"
+
+    def test_update_me_and_pet_profile(self, client, mock_mongo):
+        user_id = "user_profile_001"
+        device_id = "dev_profile_001"
+        _seed_pet(mock_mongo, user_id, device_id, "旧名")
+        token = _create_access_token(user_id)
+
+        me_resp = client.put(
+            "/api/v1/me",
+            json={"nickname": "新昵称", "avatar_url": "https://img.example/me.png"},
+            headers=_auth_header(token),
+        )
+        assert me_resp.status_code == 200
+
+        pet_resp = client.put(
+            f"/api/v1/pets/{device_id}",
+            json={"pet_name": "新宠物名", "weight": 8.5},
+            headers=_auth_header(token),
+        )
+        pet_data = _parse(pet_resp)
+        assert pet_resp.status_code == 200
+        assert pet_data["data"]["pet_name"] == "新宠物名"
+
+    def test_temperature_location_and_event_read(self, client, mock_mongo):
+        user_id = "user_data_001"
+        device_id = "dev_data_001"
+        _seed_pet(mock_mongo, user_id, device_id)
+        _seed_records(mock_mongo, device_id, count=3)
+        token = _create_access_token(user_id)
+
+        t_resp = client.get(
+            f"/api/v1/pets/{device_id}/temperature/series",
+            headers=_auth_header(token),
+        )
+        t_data = _parse(t_resp)
+        assert t_resp.status_code == 200
+        assert "points" in t_data["data"]
+
+        l_resp = client.get(
+            f"/api/v1/pets/{device_id}/location/latest",
+            headers=_auth_header(token),
+        )
+        l_data = _parse(l_resp)
+        assert l_resp.status_code == 200
+        assert "lat" in l_data["data"] and "lng" in l_data["data"]
+
+        e_resp = client.get(
+            f"/api/v1/pets/{device_id}/events",
+            headers=_auth_header(token),
+        )
+        e_data = _parse(e_resp)
+        assert e_resp.status_code == 200
+        event_id = e_data["data"]["items"][0]["event_id"]
+
+        read_resp = client.put(
+            f"/api/v1/pets/{device_id}/events/{event_id}/read",
+            headers=_auth_header(token),
+        )
+        read_data = _parse(read_resp)
+        assert read_resp.status_code == 200
+        assert read_data["data"]["status"] == "marked_read"
+
+
+class TestFamily:
+    def test_family_invite_join_and_shared_access(self, client, mock_mongo):
+        owner_id = "family_owner_001"
+        member_id = "family_member_001"
+        device_id = "dev_family_001"
+        _seed_pet(mock_mongo, owner_id, device_id, "旺财")
+        _seed_records(mock_mongo, device_id, count=2)
+
+        owner_token = _create_access_token(owner_id)
+        member_token = _create_access_token(member_id)
+
+        create_resp = client.post("/api/v1/family", headers=_auth_header(owner_token))
+        assert create_resp.status_code == 200
+
+        invite_resp = client.post("/api/v1/family/invite", headers=_auth_header(owner_token))
+        invite_data = _parse(invite_resp)
+        assert invite_resp.status_code == 200
+        token = invite_data["data"]["invite_token"]
+
+        join_resp = client.post(
+            "/api/v1/family/join",
+            json={"invite_token": token},
+            headers=_auth_header(member_token),
+        )
+        assert join_resp.status_code == 200
+
+        shared_resp = client.get(
+            f"/api/v1/pets/{device_id}/summary",
+            headers=_auth_header(member_token),
+        )
+        assert shared_resp.status_code == 200
+
+        members_resp = client.get("/api/v1/family/members", headers=_auth_header(owner_token))
+        members_data = _parse(members_resp)
+        assert members_resp.status_code == 200
+        assert len(members_data["data"]["members"]) == 2

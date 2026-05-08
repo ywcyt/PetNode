@@ -7,8 +7,10 @@ blueprints —— vx API 路由蓝图包
   pets_bp    → /api/v1/pets/*     宠物遥测数据
 """
 
+from .devices import devices_bp
+from .family import family_bp
 from .pets import pets_bp
 from .users import users_bp
 from .wechat import wechat_bp
 
-__all__ = ["wechat_bp", "users_bp", "pets_bp"]
+__all__ = ["wechat_bp", "users_bp", "pets_bp", "devices_bp", "family_bp"]

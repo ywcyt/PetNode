@@ -40,13 +40,18 @@ from ..auth import require_auth
 from ..db import get_db
 from ..helpers import err, ok
 from ..services.telemetry import (
+    get_latest_location,
     get_heart_rate_series,
     get_latest_heart_rate,
     get_latest_respiration,
     get_pet_summary,
     get_respiration_series,
+    get_temperature_series,
     list_pet_events,
+    mark_pet_event_as_read,
+    update_pet_profile,
 )
+from ..services.binding import list_accessible_pets
 
 pets_bp = Blueprint("pets", __name__, url_prefix="/api/v1/pets")
 logger = logging.getLogger("flask_server.pets")
@@ -77,6 +82,13 @@ def get_pet_summary_route(pet_id: str):
     except LookupError:
         return err(40401, "宠物不存在或暂无数据上报", 404)
     return ok(data)
+
+
+@pets_bp.route("", methods=["GET"])
+@require_auth
+def list_my_pets():
+    """GET /api/v1/pets"""
+    return ok({"pets": list_accessible_pets(get_db(), g.user_id)})
 
 
 @pets_bp.route("/<pet_id>/respiration/latest", methods=["GET"])
@@ -212,4 +224,56 @@ def get_pet_events(pet_id: str):
         return err(40301, "无权访问该宠物数据，请先在 user_pets 集合中注册设备", 403)
     except ValueError:
         return err(42201, "limit 参数必须为整数", 422)
+    return ok(data)
+
+
+@pets_bp.route("/<pet_id>", methods=["PUT"])
+@require_auth
+def update_pet_profile_route(pet_id: str):
+    body = request.get_json(force=True, silent=True) or {}
+    try:
+        data = update_pet_profile(get_db(), g.user_id, pet_id, body)
+    except PermissionError:
+        return err(40301, "仅设备拥有者可修改宠物资料", 403)
+    except ValueError:
+        return err(42201, "至少提供一个可更新字段", 422)
+    return ok(data)
+
+
+@pets_bp.route("/<pet_id>/temperature/series", methods=["GET"])
+@require_auth
+def get_temperature_series_route(pet_id: str):
+    start = request.args.get("start")
+    end = request.args.get("end")
+    raw_limit = request.args.get("limit")
+    try:
+        data = get_temperature_series(get_db(), g.user_id, pet_id, start, end, raw_limit)
+    except PermissionError:
+        return err(40301, "无权访问该宠物数据，请先绑定或加入家庭组", 403)
+    except ValueError:
+        return err(42201, "limit 参数必须为整数", 422)
+    return ok(data)
+
+
+@pets_bp.route("/<pet_id>/location/latest", methods=["GET"])
+@require_auth
+def get_latest_location_route(pet_id: str):
+    try:
+        data = get_latest_location(get_db(), g.user_id, pet_id)
+    except PermissionError:
+        return err(40301, "无权访问该宠物数据，请先绑定或加入家庭组", 403)
+    except LookupError:
+        return err(40401, "暂无定位数据", 404)
+    return ok(data)
+
+
+@pets_bp.route("/<pet_id>/events/<event_id>/read", methods=["PUT"])
+@require_auth
+def mark_event_read_route(pet_id: str, event_id: str):
+    try:
+        data = mark_pet_event_as_read(get_db(), g.user_id, pet_id, event_id)
+    except PermissionError:
+        return err(40301, "无权访问该宠物数据，请先绑定或加入家庭组", 403)
+    except ValueError:
+        return err(42201, "event_id 参数不能为空", 422)
     return ok(data)

@@ -281,7 +281,7 @@ class MySQLStorageLegacy(BaseStorage):
 
     @staticmethod
     def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha1(device_sn.encode("utf-8")).digest()
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], byteorder="big", signed=False)
         value &= 0x7FFFFFFFFFFFFFFF
         return value or 1
@@ -339,7 +339,7 @@ class MySQLStorageLegacy(BaseStorage):
 
     def _ensure_event_type(self, event_name: str, timestamp: datetime) -> int:
         if event_name not in EVENT_TYPES:
-            event_type_id = int.from_bytes(hashlib.sha1(event_name.encode("utf-8")).digest()[:6], "big")
+            event_type_id = int.from_bytes(hashlib.sha256(event_name.encode("utf-8")).digest()[:6], "big")
             event_type_id &= 0x7FFFFFFFFFFFFFFF
             event_type_id = event_type_id or 1
             event_level = 1
@@ -828,11 +828,46 @@ class MySQLStorage(BaseStorage):
 
     @staticmethod
     def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha1(device_sn.encode("utf-8")).digest()
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 
-    def _ensure_device(self, device_sn: str, now: datetime) -> int:
+    def _resolve_user_id_from_record(self, record: dict, now: datetime) -> int:
+        """从记录解析 user_id，并确保 user 表有对应用户。"""
+        raw_user_id = record.get("user_id")
+        if raw_user_id in (None, ""):
+            user_id = self.default_user_id
+        elif isinstance(raw_user_id, int):
+            user_id = raw_user_id
+        elif isinstance(raw_user_id, str) and raw_user_id.strip().isdigit():
+            user_id = int(raw_user_id.strip())
+        else:
+            text = str(raw_user_id).strip()
+            user_id = self._stable_device_id(f"user:{text}")
+
+        username = str(record.get("username") or f"user_{user_id}")
+        nick_name = str(record.get("nickname") or username)
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO `user` (user_id, username, password_hash, phone, nick_name, create_time, update_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        username = VALUES(username),
+                        nick_name = VALUES(nick_name),
+                        update_time = VALUES(update_time)
+                    """,
+                    (user_id, username, "", None, nick_name, now, now),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to upsert user: user_id=%s", user_id, exc_info=True)
+            raise
+        return user_id
+
+    def _ensure_device(self, device_sn: str, now: datetime, user_id: int) -> int:
         device_id = self._stable_device_id(device_sn)
         device_name = f"{self.default_device_name_prefix}{device_sn[:8]}"
         pet_name = device_sn[:30]
@@ -852,7 +887,7 @@ class MySQLStorage(BaseStorage):
                     """,
                     (
                         device_id,
-                        self.default_user_id,
+                        user_id,
                         device_sn,
                         device_name,
                         pet_name,
@@ -1243,8 +1278,9 @@ class MySQLStorage(BaseStorage):
 
         record_timestamp = self._parse_timestamp(record.get("timestamp"))
         now = self._utc_now()
+        user_id = self._resolve_user_id_from_record(record, now)
 
-        device_id = self._ensure_device(device_sn, now)
+        device_id = self._ensure_device(device_sn, now, user_id)
         is_anomaly, anomaly_code, anomaly_detail = self._detect_anomaly(record)
         if not is_anomaly:
             self._ensure_active_event(
@@ -1267,7 +1303,7 @@ class MySQLStorage(BaseStorage):
         )
 
         self._save_anomaly(
-            user_id=self.default_user_id,
+            user_id=user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,
             record_timestamp=record_timestamp,
