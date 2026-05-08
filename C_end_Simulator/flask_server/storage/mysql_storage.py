@@ -1333,34 +1333,44 @@ class MySQLStorage(BaseStorage):
         user_id = self._resolve_user_id_from_record(record, now)
         device_id = self._ensure_device(device_sn, now, user_id)
         is_anomaly, anomaly_code, anomaly_detail = self._detect_anomaly(record)
+
+        event_instance_id: Optional[int]
         if not is_anomaly:
-            self._ensure_active_event(
+            event_instance_id = self._ensure_active_event(
                 device_id=device_id,
                 event_name=None,
                 event_phase=None,
                 record_timestamp=record_timestamp,
                 now=now,
             )
-            return
+        else:
+            event_name = record.get("event")
+            event_phase = record.get("event_phase")
+            event_instance_id = self._ensure_active_event(
+                device_id=device_id,
+                event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
+                event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
+                record_timestamp=record_timestamp,
+                now=now,
+            )
 
-        event_name = record.get("event")
-        event_phase = record.get("event_phase")
-        event_instance_id = self._ensure_active_event(
-            device_id=device_id,
-            event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
-            event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
-            record_timestamp=record_timestamp,
-            now=now,
-        )
-
-        self._save_anomaly(
+        self._insert_telemetry_rows(
             user_id=user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,
             record_timestamp=record_timestamp,
-            anomaly_code=anomaly_code,
-            anomaly_detail=anomaly_detail,
+            record=record,
         )
+
+        if is_anomaly:
+            self._save_anomaly(
+                user_id=user_id,
+                device_id=device_id,
+                event_instance_id=event_instance_id,
+                record_timestamp=record_timestamp,
+                anomaly_code=anomaly_code,
+                anomaly_detail=anomaly_detail,
+            )
 
     def close(self) -> None:
         try:

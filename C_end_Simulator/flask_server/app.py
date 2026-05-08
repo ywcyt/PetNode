@@ -164,6 +164,14 @@ def _build_query_response(source: str, kind: str, payload):
     }), 200
 
 
+def _first_query_arg(*names: str, default: str | None = None) -> str | None:
+    for name in names:
+        value = request.args.get(name)
+        if value is not None and str(value).strip():
+            return value
+    return default
+
+
 def _handle_query_request(
     default_user_key: str | None = None,
     default_device_key: str | None = None,
@@ -172,8 +180,8 @@ def _handle_query_request(
 ):
     source = (source_override or request.args.get("source", "mongo")).strip().lower()
     kind = (kind_override or request.args.get("kind", "records")).strip().lower()
-    user_key = request.args.get("user_id") or default_user_key
-    device_key = request.args.get("device_id") or default_device_key
+    user_key = _first_query_arg("user_id", "user_key", default=default_user_key)
+    device_key = _first_query_arg("device_id", "device_key", default=default_device_key)
 
     try:
         limit = int(request.args.get("limit", "100"))
@@ -182,8 +190,14 @@ def _handle_query_request(
         return jsonify({"status": "error", "message": "limit/offset 必须是整数"}), 400
 
     try:
-        start_time = _parse_iso_datetime(request.args.get("start_time"), "start_time")
-        end_time = _parse_iso_datetime(request.args.get("end_time"), "end_time")
+        start_time = _parse_iso_datetime(
+            _first_query_arg("start_time", "start"),
+            "start_time",
+        )
+        end_time = _parse_iso_datetime(
+            _first_query_arg("end_time", "end"),
+            "end_time",
+        )
     except ValueError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 400
 
@@ -401,15 +415,33 @@ def query_records():
     return _handle_query_request()
 
 
+@app.route("/api/v1/records", methods=["GET"])
+def query_records_v1():
+    """兼容文档中的 v1 查询入口。"""
+    return _handle_query_request()
+
+
 @app.route("/api/users/<user_key>/records", methods=["GET"])
 def query_records_by_user(user_key: str):
     """按用户查询，user_key 在 Mongo 中按 user_id 匹配，在 MySQL 中可按 user_id 或 username 匹配。"""
     return _handle_query_request(default_user_key=user_key)
 
 
+@app.route("/api/v1/users/<user_key>/records", methods=["GET"])
+def query_records_by_user_v1(user_key: str):
+    """兼容文档中的 v1 按用户查询入口。"""
+    return _handle_query_request(default_user_key=user_key)
+
+
 @app.route("/api/devices/<device_key>/records", methods=["GET"])
 def query_records_by_device(device_key: str):
     """按设备查询，device_key 在 Mongo 中按 device_id 匹配，在 MySQL 中可按 device_id 或 device_sn 匹配。"""
+    return _handle_query_request(default_device_key=device_key)
+
+
+@app.route("/api/v1/devices/<device_key>/records", methods=["GET"])
+def query_records_by_device_v1(device_key: str):
+    """兼容文档中的 v1 按设备查询入口。"""
     return _handle_query_request(default_device_key=device_key)
 
 
@@ -420,6 +452,49 @@ def query_profile():
     if source != "mysql":
         return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
     return _handle_query_request(source_override="mysql", kind_override="profile")
+
+
+@app.route("/api/v1/profile", methods=["GET"])
+def query_profile_v1():
+    """兼容文档中的 v1 profile 入口。"""
+    source = request.args.get("source", "mysql").strip().lower()
+    if source != "mysql":
+        return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
+    return _handle_query_request(source_override="mysql", kind_override="profile")
+
+
+def _not_implemented_route(message: str):
+    def handler(**_kwargs):
+        return jsonify({"status": "error", "message": message}), 501
+
+    return handler
+
+
+for rule, methods, endpoint, message in [
+    ("/api/v1/wechat/auth", ["POST"], "wechat_auth_v1", "wechat/auth 暂未实现"),
+    ("/api/v1/wechat/bind", ["POST"], "wechat_bind_v1", "wechat/bind 暂未实现"),
+    ("/api/v1/wechat/unbind", ["POST"], "wechat_unbind_v1", "wechat/unbind 暂未实现"),
+    ("/api/v1/me", ["GET", "PUT"], "me_v1", "me 接口暂未实现"),
+    ("/api/v1/devices/bind", ["POST"], "devices_bind_v1", "devices/bind 暂未实现"),
+    ("/api/v1/devices/<device_id>/unbind", ["POST"], "devices_unbind_v1", "devices/unbind 暂未实现"),
+    ("/api/v1/pets", ["GET"], "pets_v1", "pets 列表接口暂未实现"),
+    ("/api/v1/pets/<pet_id>/summary", ["GET"], "pet_summary_v1", "pet summary 接口暂未实现"),
+    ("/api/v1/pets/<pet_id>/respiration/latest", ["GET"], "pet_respiration_latest_v1", "respiration/latest 暂未实现"),
+    ("/api/v1/pets/<pet_id>/respiration/series", ["GET"], "pet_respiration_series_v1", "respiration/series 暂未实现"),
+    ("/api/v1/pets/<pet_id>/heart-rate/latest", ["GET"], "pet_heart_rate_latest_v1", "heart-rate/latest 暂未实现"),
+    ("/api/v1/pets/<pet_id>/heart-rate/series", ["GET"], "pet_heart_rate_series_v1", "heart-rate/series 暂未实现"),
+    ("/api/v1/pets/<pet_id>/temperature/series", ["GET"], "pet_temperature_series_v1", "temperature/series 暂未实现"),
+    ("/api/v1/pets/<pet_id>/location/latest", ["GET"], "pet_location_latest_v1", "location/latest 暂未实现"),
+    ("/api/v1/pets/<pet_id>/events", ["GET"], "pet_events_v1", "events 列表接口暂未实现"),
+    ("/api/v1/pets/<pet_id>/events/<event_id>/read", ["PUT"], "pet_event_read_v1", "events/read 暂未实现"),
+    ("/api/v1/pets/<pet_id>", ["PUT"], "pet_update_v1", "pet 资料修改接口暂未实现"),
+    ("/api/v1/family", ["POST"], "family_create_v1", "family 创建接口暂未实现"),
+    ("/api/v1/family/invite", ["POST"], "family_invite_v1", "family invite 接口暂未实现"),
+    ("/api/v1/family/join", ["POST"], "family_join_v1", "family join 接口暂未实现"),
+    ("/api/v1/family/members", ["GET"], "family_members_v1", "family members 接口暂未实现"),
+    ("/api/v1/family/members/<user_id>", ["DELETE"], "family_member_remove_v1", "family member remove 接口暂未实现"),
+]:
+    app.add_url_rule(rule, endpoint=endpoint, view_func=_not_implemented_route(message), methods=methods)
 
 
 # ────────────────── 启动入口 ──────────────────
