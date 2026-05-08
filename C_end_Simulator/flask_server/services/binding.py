@@ -234,21 +234,20 @@ def bind_user_to_device(
     except DuplicateKeyError as exc:
         raise RuntimeError("设备绑定冲突，请稍后重试") from exc
 
+    pet_set = {
+        "pet_id": resolved_device_id,
+        "device_id": resolved_device_id,
+        "user_id": user_id,
+        "pet_name": pet_name,
+        "breed": breed,
+        "avatar_url": avatar_url,
+        "updated_at": now,
+    }
+    if weight is not None:
+        pet_set["weight"] = weight
     db["pets"].update_one(
         {"pet_id": resolved_device_id},
-        {
-            "$set": {
-                "pet_id": resolved_device_id,
-                "device_id": resolved_device_id,
-                "user_id": user_id,
-                "pet_name": pet_name,
-                "breed": breed,
-                "avatar_url": avatar_url,
-                "updated_at": now,
-                **({"weight": weight} if weight is not None else {}),
-            },
-            "$setOnInsert": {"created_at": now},
-        },
+        {"$set": pet_set, "$setOnInsert": {"created_at": now}},
         upsert=True,
     )
     logger.info("用户 %s 绑定设备 %s（宠物：%s）", user_id, resolved_device_id, pet_name or "—")
@@ -348,9 +347,17 @@ def assert_user_owns_pet(db, user_id: str, pet_id: str) -> None:
 def _allocate_unbound_device_id(db) -> str | None:
     """从已上报数据中分配一个未被认领的设备 ID。"""
     used = set(db["user_pets"].distinct("device_id"))
-    all_ids = sorted([x for x in db["received_records"].distinct("device_id") if x])
-    for device_id in all_ids:
-        if device_id and device_id not in used:
+    seen: set[str] = set()
+    cursor = db["received_records"].find(
+        {"device_id": {"$exists": True, "$ne": None}},
+        {"_id": 0, "device_id": 1},
+    ).sort("device_id", 1)
+    for row in cursor:
+        device_id = str(row.get("device_id") or "").strip()
+        if not device_id or device_id in seen:
+            continue
+        seen.add(device_id)
+        if device_id not in used:
             return device_id
     return None
 

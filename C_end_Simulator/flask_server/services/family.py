@@ -4,6 +4,14 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 
+class InviteExpiredError(PermissionError):
+    """邀请码过期。"""
+
+
+class AlreadyInFamilyError(PermissionError):
+    """已在家庭组中。"""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -77,13 +85,13 @@ def join_family(db, user_id: str, invite_token: str) -> dict:
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if _now() > expires_at:
-        raise PermissionError("邀请码已过期")
+        raise InviteExpiredError("邀请码已过期")
 
-    if db["family_members"].count_documents({"user_id": user_id}, limit=1) > 0:
-        existing = db["family_members"].find_one({"user_id": user_id}, {"_id": 0, "family_id": 1})
-        if existing and existing["family_id"] == invite["family_id"]:
+    existing = db["family_members"].find_one({"user_id": user_id}, {"_id": 0, "family_id": 1})
+    if existing:
+        if existing["family_id"] == invite["family_id"]:
             return {"join_status": "already_joined", "family_id": invite["family_id"]}
-        raise PermissionError("你已加入其他家庭组")
+        raise AlreadyInFamilyError("你已加入其他家庭组")
 
     now_iso = _now_iso()
     db["family_members"].insert_one(

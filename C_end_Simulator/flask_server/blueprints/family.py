@@ -6,6 +6,8 @@ from ..auth import require_auth
 from ..db import get_db
 from ..helpers import err, ok
 from ..services.family import (
+    AlreadyInFamilyError,
+    InviteExpiredError,
     create_family,
     create_invite_token,
     join_family,
@@ -49,11 +51,10 @@ def join_family_route():
         result = join_family(get_db(), g.user_id, invite_token)
     except LookupError:
         return err(40401, "邀请码无效", 404)
-    except PermissionError as exc:
-        text = str(exc)
-        if "过期" in text:
-            return err(40103, text, 401)
-        return err(40901, text, 409)
+    except InviteExpiredError:
+        return err(40103, "邀请码已过期", 401)
+    except AlreadyInFamilyError:
+        return err(40901, "你已加入其他家庭组", 409)
     return ok(result)
 
 
@@ -72,8 +73,8 @@ def list_members_route():
 def remove_member_route(target_user_id: str):
     try:
         result = remove_family_member(get_db(), g.user_id, target_user_id)
-    except LookupError as exc:
-        return err(40401, str(exc), 404)
-    except PermissionError as exc:
-        return err(40301, str(exc), 403)
+    except LookupError:
+        return err(40401, "目标成员不存在或你尚未加入家庭组", 404)
+    except PermissionError:
+        return err(40301, "无权限执行该操作", 403)
     return ok(result)

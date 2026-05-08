@@ -28,6 +28,7 @@ services/telemetry.py —— 宠物遥测数据查询服务
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from typing import Any
 
@@ -508,16 +509,6 @@ def mark_pet_event_as_read(db, user_id: str, pet_id: str, event_id: str) -> dict
     if not event_id:
         raise ValueError("event_id 不能为空")
 
-    matched = db["received_records"].find(
-        {"device_id": pet_id, "event": {"$exists": True, "$ne": None}},
-        {"_id": 0, "timestamp": 1, "event": 1, "event_phase": 1},
-        sort=[("timestamp", -1)],
-        limit=2000,
-    )
-    exists = any(_build_event_id(pet_id, row) == event_id for row in matched)
-    if not exists:
-        raise LookupError("事件不存在")
-
     db["pet_event_reads"].update_one(
         {"user_id": user_id, "pet_id": pet_id, "event_id": event_id},
         {"$set": {"read_at": _now_iso()}},
@@ -553,8 +544,14 @@ def update_pet_profile(db, user_id: str, pet_id: str, updates: dict) -> dict:
 
 
 def _build_event_id(pet_id: str, row: dict) -> str:
-    text = f"{pet_id}|{row.get('timestamp')}|{row.get('event')}|{row.get('event_phase')}"
-    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
+    payload = {
+        "pet_id": pet_id,
+        "timestamp": row.get("timestamp"),
+        "event": row.get("event"),
+        "event_phase": row.get("event_phase"),
+    }
+    text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
 
 
 def _now_iso() -> str:

@@ -235,8 +235,8 @@ def update_pet_profile_route(pet_id: str):
         data = update_pet_profile(get_db(), g.user_id, pet_id, body)
     except PermissionError:
         return err(40301, "仅设备拥有者可修改宠物资料", 403)
-    except ValueError as exc:
-        return err(42201, str(exc), 422)
+    except ValueError:
+        return err(42201, "至少提供一个可更新字段", 422)
     return ok(data)
 
 
@@ -274,8 +274,6 @@ def mark_event_read_route(pet_id: str, event_id: str):
         data = mark_pet_event_as_read(get_db(), g.user_id, pet_id, event_id)
     except PermissionError:
         return err(40301, "无权访问该宠物数据，请先绑定或加入家庭组", 403)
-    except LookupError:
-        return err(40401, "事件不存在", 404)
     except ValueError:
         return err(42201, "event_id 参数不能为空", 422)
     return ok(data)

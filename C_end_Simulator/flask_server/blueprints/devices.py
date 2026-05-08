@@ -36,8 +36,8 @@ def bind_device():
         return err(40901, "该设备已被其他用户认领", 409)
     except RuntimeError:
         return err(40901, "绑定冲突，请稍后重试", 409)
-    except ValueError as exc:
-        return err(42201, str(exc), 422)
+    except ValueError:
+        return err(42201, "参数无效或当前无可分配设备", 422)
 
     return ok(
         {
@@ -54,8 +54,8 @@ def bind_device():
 def unbind_device(device_id: str):
     try:
         result = unbind_user_from_device(get_db(), g.user_id, device_id)
-    except ValueError as exc:
-        return err(42201, str(exc), 422)
+    except ValueError:
+        return err(42201, "device_id 参数不能为空", 422)
 
     return ok(
         {

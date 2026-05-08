@@ -281,7 +281,7 @@ class MySQLStorageLegacy(BaseStorage):
 
     @staticmethod
     def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha1(device_sn.encode("utf-8")).digest()
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], byteorder="big", signed=False)
         value &= 0x7FFFFFFFFFFFFFFF
         return value or 1
@@ -339,7 +339,7 @@ class MySQLStorageLegacy(BaseStorage):
 
     def _ensure_event_type(self, event_name: str, timestamp: datetime) -> int:
         if event_name not in EVENT_TYPES:
-            event_type_id = int.from_bytes(hashlib.sha1(event_name.encode("utf-8")).digest()[:6], "big")
+            event_type_id = int.from_bytes(hashlib.sha256(event_name.encode("utf-8")).digest()[:6], "big")
             event_type_id &= 0x7FFFFFFFFFFFFFFF
             event_type_id = event_type_id or 1
             event_level = 1
@@ -828,7 +828,7 @@ class MySQLStorage(BaseStorage):
 
     @staticmethod
     def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha1(device_sn.encode("utf-8")).digest()
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 
