@@ -72,11 +72,55 @@ def ensure_indexes() -> None:
             unique=True,
             name="idx_user_pet",
         )
+        db["user_pets"].create_index(
+            [("device_id", ASCENDING)],
+            unique=True,
+            name="idx_device_unique",
+        )
 
         # received_records: (device_id, timestamp desc) 覆盖最新记录查询
         db["received_records"].create_index(
             [("device_id", ASCENDING), ("timestamp", DESCENDING)],
             name="idx_device_ts_desc",
+        )
+
+        db["families"].create_index(
+            [("family_id", ASCENDING)],
+            unique=True,
+            name="idx_family_id_unique",
+        )
+        db["families"].create_index(
+            [("owner_user_id", ASCENDING)],
+            unique=True,
+            name="idx_family_owner_unique",
+        )
+        db["family_members"].create_index(
+            [("family_id", ASCENDING), ("user_id", ASCENDING)],
+            unique=True,
+            name="idx_family_member_unique",
+        )
+        db["family_members"].create_index(
+            [("user_id", ASCENDING)],
+            name="idx_family_member_user",
+        )
+        db["family_invites"].create_index(
+            [("invite_token", ASCENDING)],
+            unique=True,
+            name="idx_invite_token_unique",
+        )
+        db["family_invites"].create_index(
+            [("expires_at", ASCENDING)],
+            name="idx_invite_expires_at",
+        )
+        db["pet_event_reads"].create_index(
+            [("user_id", ASCENDING), ("pet_id", ASCENDING), ("event_id", ASCENDING)],
+            unique=True,
+            name="idx_event_read_unique",
+        )
+        db["pets"].create_index(
+            [("pet_id", ASCENDING)],
+            unique=True,
+            name="idx_pet_id_unique",
         )
 
         logger.info("vx API MongoDB indexes ensured")

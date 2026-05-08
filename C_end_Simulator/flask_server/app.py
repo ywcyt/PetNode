@@ -232,15 +232,17 @@ _total_received: int = 0
 # 将微信认证、用户信息、宠物遥测三个 Blueprint 挂载到 Flask 应用。
 # 路由前缀由各 Blueprint 自身定义（/api/v1/wechat/* / /api/v1/me / /api/v1/pets/*）。
 try:
-    from flask_server.blueprints import wechat_bp, users_bp, pets_bp
+    from flask_server.blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
     from flask_server.db import ensure_indexes
 except ImportError:
-    from .blueprints import wechat_bp, users_bp, pets_bp
+    from .blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
     from .db import ensure_indexes
 
 app.register_blueprint(wechat_bp)
 app.register_blueprint(users_bp)
 app.register_blueprint(pets_bp)
+app.register_blueprint(devices_bp)
+app.register_blueprint(family_bp)
 
 # 在启动时尝试创建 MongoDB 索引。
 # ensure_indexes() 内部已处理 PyMongoError（MongoDB 未就绪时不阻断启动）。
