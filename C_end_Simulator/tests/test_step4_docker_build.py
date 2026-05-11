@@ -101,17 +101,17 @@ class TestDockerfileContent:
 
     def test_engine_dockerfile_has_from(self):
         """engine/Dockerfile 应包含 FROM 指令"""
-        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text()
+        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text(encoding="utf-8")
         assert "FROM" in content
 
     def test_engine_dockerfile_has_pip_install(self):
         """engine/Dockerfile 应包含 pip install"""
-        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text()
+        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text(encoding="utf-8")
         assert "pip install" in content
 
     def test_engine_dockerfile_has_entrypoint(self):
         """engine/Dockerfile 应包含入口点"""
-        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text()
+        content = (_PROJECT_ROOT / "engine" / "Dockerfile").read_text(encoding="utf-8")
         assert "ENTRYPOINT" in content or "CMD" in content
 
 
@@ -123,12 +123,12 @@ class TestDockerComposeContent:
 
     def test_compose_has_engine_service(self):
         """docker-compose.yml 应定义 engine 服务"""
-        content = (_PROJECT_ROOT / "docker-compose.yml").read_text()
+        content = (_PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         assert "engine:" in content
 
     def test_compose_has_volumes(self):
         """docker-compose.yml 应挂载 output_data 卷"""
-        content = (_PROJECT_ROOT / "docker-compose.yml").read_text()
+        content = (_PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         assert "output_data" in content
 
     def test_compose_valid_yaml(self):

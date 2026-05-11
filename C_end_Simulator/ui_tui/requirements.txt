@@ -1,0 +1,3 @@
+# ui_tui/requirements.txt —— TUI 终端界面依赖
+# textual: Text User Interface 框架，用于构建终端全屏交互界面
+textual>=0.50,<2.0
