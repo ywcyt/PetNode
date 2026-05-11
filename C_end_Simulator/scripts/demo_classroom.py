@@ -14,7 +14,7 @@ demo_classroom.py —— PetNode 第二阶段课堂验收演示脚本
     6. ✅ 正确 API Key + 正确 HMAC 签名  → 期望 200
 
   第三部分：数据上传演示
-    7. 📤 单条上传：完整 13 字段项圈数据
+    7. 📤 单条上传：完整 12 字段项圈数据
     8. 📦 批量上传：20 条模拟数据，统计成功/失败/平均响应时间
     9. 📊 再次健康检查，显示 total_received 变化
 
@@ -55,9 +55,6 @@ _WHITE  = "\033[97m"
 
 _DEFAULT_API_KEY  = "petnode_secret_key_2026"
 _DEFAULT_HMAC_KEY = "petnode_hmac_secret_2026"
-
-# 所有演示数据的 user_id 前缀，方便事后按前缀清理
-_DEMO_USER_PREFIX = "demo_classroom_"
 
 # 单条上传示例数据的 device_id
 _DEMO_DEVICE_SINGLE = "demo_collar_001"
@@ -154,8 +151,7 @@ def _build_record(
     timestamp: str | None = None,
 ) -> dict:
     """
-    构造一条完整的 13 字段项圈数据记录。
-    user_id 以 demo_classroom_ 开头，便于事后批量清理。
+    构造一条完整的 12 字段项圈数据记录。
     """
     if timestamp is None:
         timestamp = f"2026-04-17T{index % 24:02d}:{(index * 3) % 60:02d}:00"
@@ -359,11 +355,11 @@ def step_auth_demo(base_url: str, api_key: str, hmac_key: str, timeout: int) -> 
 
 def step_single_upload(base_url: str, api_key: str, hmac_key: str, timeout: int) -> bool:
     """
-    第三部分 步骤 7：单条上传演示（完整 13 字段）
+    第三部分 步骤 7：单条上传演示（完整 12 字段）
     """
     _print_sep("📤 第三部分：数据上传演示")
     print(f"\n{'─'*40}")
-    print(f"{_BOLD}步骤 7  📤 单条上传（完整 13 字段项圈数据）{_RESET}")
+    print(f"{_BOLD}步骤 7  📤 单条上传（完整 12 字段项圈数据）{_RESET}")
     print(f"{'─'*40}")
 
     record = {
@@ -504,7 +500,7 @@ def step_cleanup_instruction(batch: int) -> None:
     print(f"""
 {_YELLOW}本演示脚本无法通过 API 自动删除服务端数据（服务端未提供 DELETE 接口）。
 
-所有演示数据的 user_id 均以 "{_DEMO_USER_PREFIX}" 开头，
+所有演示数据的 device_id 均以 "demo_" 开头，
 可在服务器上执行以下 MongoDB 命令清理：{_RESET}
 
 {_BOLD}{_GREEN}# 方法 1：直接在服务器上执行（需要先 SSH 登录）{_RESET}

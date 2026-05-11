@@ -62,7 +62,6 @@ _REQUEST_TIMEOUT = 5
 # 防止网络恢复后一次性补发过多导致 Flask 过载
 _MAX_RETRY_PER_FLUSH = 50
 
-
 class HttpExporter(BaseExporter):
     """
     通过 HTTP POST 将数据上报至 Flask 服务器。
@@ -137,7 +136,7 @@ class HttpExporter(BaseExporter):
         Parameters
         ----------
         record : dict
-            由 SmartCollar.generate_one_record() 产出的 13 字段字典
+            由 SmartCollar.generate_one_record() 产出的 12 字段字典
 
         流程：
             1. 尝试 HTTP POST record 到 Flask
@@ -147,6 +146,11 @@ class HttpExporter(BaseExporter):
         try:
             # 使用 _sign_and_post() 计算 HMAC 签名并发送请求
             resp = self._sign_and_post(record)
+
+            # 🆕 新增：拦截鉴权错误，防止密码错误的数据被当成断网缓存起来
+            if resp.status_code in [401, 403]:
+                logger.error("鉴权失败 (状态码 %d)，服务器拒绝接收数据。请检查 Token。", resp.status_code)
+                return
 
             # raise_for_status(): 如果状态码不是 2xx，抛出 HTTPError 异常
             # 例如 Flask 返回 400（数据格式错误）或 500（服务器内部错误）

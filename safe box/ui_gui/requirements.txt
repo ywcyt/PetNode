@@ -1,0 +1,5 @@
+# ui_gui/requirements.txt —— GUI 桌面界面依赖
+# PyQt6: Qt6 的 Python 绑定，用于构建跨平台桌面图形界面
+#        注意：PyQt6 依赖宿主机的图形环境（X11/Wayland），无法在 Docker 中运行
+#        因此 GUI 不参与 Docker 编排，仅在宿主机上直接运行
+PyQt6>=6.5,<7

@@ -32,9 +32,9 @@ class TestParseArgs:
     """测试命令行参数解析的默认值和自定义值"""
 
     def test_defaults(self):
-        """不传参时应使用默认值：1 用户、1 只狗、100 ticks、1 分钟/tick、0 间隔"""
+        """不传参时应使用默认值：1 分组、1 只狗、100 ticks、1 分钟/tick、0 间隔"""
         args = parse_args([])
-        assert args.users == 1
+        assert args.groups == 1
         assert args.dogs == 1
         assert args.ticks == 100
         assert args.tick_minutes == 1
@@ -46,7 +46,7 @@ class TestParseArgs:
     def test_custom_args(self):
         """自定义参数应被正确解析"""
         args = parse_args([
-            "--users", "2",
+            "--groups", "2",
             "--dogs", "3",
             "--ticks", "50",
             "--tick-minutes", "15",
@@ -55,7 +55,7 @@ class TestParseArgs:
             "--output-dir", "/tmp/test_out",
             "--log-level", "DEBUG",
         ])
-        assert args.users == 2
+        assert args.groups == 2
         assert args.dogs == 3
         assert args.ticks == 50
         assert args.tick_minutes == 15
@@ -63,6 +63,11 @@ class TestParseArgs:
         assert args.seed == 42
         assert args.output_dir == "/tmp/test_out"
         assert args.log_level == "DEBUG"
+
+    def test_legacy_users_alias(self):
+        """旧参数 --users 仍可作为 --groups 的兼容别名使用"""
+        args = parse_args(["--users", "2"])
+        assert args.groups == 2
 
 
 # ────────── command.json 测试 ──────────
@@ -166,7 +171,7 @@ class TestSchedulerRun:
         assert len(records) == 15
 
     def test_records_have_correct_fields(self, tmp_path: Path):
-        """每条记录都包含 13 个必需字段"""
+        """每条记录都包含 12 个必需字段"""
         expected_keys = {
             "device_id", "timestamp", "behavior", "heart_rate",
             "resp_rate", "temperature", "steps", "battery",
@@ -229,7 +234,7 @@ class TestSchedulerRun:
         dir2 = tmp_path / "run2"
         r1 = run(num_dogs=1, num_ticks=20, seed=42, output_dir=dir1)
         r2 = run(num_dogs=1, num_ticks=20, seed=42, output_dir=dir2)
-        # device_id 和 user_id 由 uuid4 生成，不受 numpy seed 控制，需排除比较
+        # device_id 由 uuid4 生成，不受 numpy seed 控制，需排除比较
         for a, b in zip(r1, r2):
             for key in a:
                 if key in ("device_id"):
@@ -240,7 +245,6 @@ class TestSchedulerRun:
         """0 ticks 应返回空列表"""
         records = run(num_dogs=1, num_ticks=0, seed=42, output_dir=tmp_path)
         assert len(records) == 0
-
 
 
 

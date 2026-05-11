@@ -6,3 +6,5 @@ pymongo>=4.6,<5.0             # MongoDB 官方 Python 驱动
 pika>=1.3,<2.0                # RabbitMQ Python 客户端（mq-worker 消费队列）
 PyMySQL>=1.1,<2.0             # MySQL Python 客户端（MySQLStorage 使用）
 cryptography>=42.0,<45.0      # PyMySQL 连接 MySQL 8 的 caching_sha2_password 认证依赖
+PyJWT>=2.8,<3.0               # JWT token 生成与验证（vx 鉴权）
+requests>=2.31,<3.0           # HTTP 客户端（调用微信 code2Session API）

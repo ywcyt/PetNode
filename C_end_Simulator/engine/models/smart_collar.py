@@ -245,7 +245,7 @@ class SmartCollar:
         vital["resp_rate"] = max(8, min(80, round(vital["resp_rate"], 1)))
         vital["temperature"] = max(36.0, min(42.0, round(vital["temperature"], 2)))
 
-        # 组装最终输出记录（共 13 个字段）
+        # 组装最终输出记录（共 12 个字段）
         return {
             "device_id": self.profile.dog_id,          # 设备（狗）唯一标识
             "timestamp": self.sim_time.isoformat(),    # 模拟时间戳 (ISO 8601)
@@ -391,4 +391,3 @@ if __name__ == "__main__":
     for i in range(5):
         record = collar.generate_one_record()
         print(f"[Tick {i+1}] {record}")
-

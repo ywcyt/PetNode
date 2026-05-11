@@ -50,7 +50,7 @@ class BaseStorage(ABC):
         Parameters
         ----------
         record : dict
-            从 Engine 接收到的一条狗项圈数据记录（13 个字段的字典）
+            从 Engine 接收到的一条狗项圈数据记录（12 个字段的字典）
 
         Raises
         ------

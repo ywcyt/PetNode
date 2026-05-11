@@ -215,15 +215,15 @@ class TestRunMultithreading:
         device_ids = {r["device_id"] for r in records}
         assert len(device_ids) == 4
 
-    def test_run_multi_user_multi_dog_parallel(self, tmp_path: Path):
-        """多用户多狗并行模式应正确分配 user_id"""
+    def test_run_multi_group_multi_dog_parallel(self, tmp_path: Path):
+        """多分组多狗并行模式应保持记录数和 device_id 数量正确"""
         from engine.main import run
         records = run(
             num_dogs=6,
             num_ticks=10,
             seed=42,
             output_dir=tmp_path,
-            num_users=3,
+            num_groups=3,
         )
         assert len(records) == 60  # 6 dogs × 10 ticks
         device_ids = {r["device_id"] for r in records}

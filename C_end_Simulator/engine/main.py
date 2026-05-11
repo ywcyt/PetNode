@@ -1,7 +1,7 @@
 """engine/main.py —— 核心调度器
 
 职责：
-- 解析命令行参数（用户数量、狗数量、Tick 数、间隔、种子等）
+- 解析命令行参数（设备分组数、狗数量、Tick 数、间隔、种子等）
 - 创建 SmartCollar 实例 + 主通道 Exporter + FileExporter(TUI 缓冲) + DummyListener
 - 主循环：每个 tick 生成数据 → 走“主通道”上报/入队 → 写本地缓冲文件
 - 支持多线程：每个 tick 内，使用线程池并行生成每只狗的数据
@@ -196,7 +196,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         参数列表，默认读取 sys.argv
 
     支持的参数：
-      --users         用户数量（默认 1，一个用户可拥有多条狗）
+      --groups        设备分组数量（默认 1，仅用于运行元数据）
       --dogs          模拟的狗数量（默认 1）
       --ticks         每只狗生成的 tick 总数（默认 100）
       --tick-minutes  每个 tick 对应的模拟时间分钟数（默认 1）
@@ -210,8 +210,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="PetNode C端 智能项圈数据模拟引擎",
     )
     parser.add_argument(
-        "--users", type=int, default=1,
-        help="用户数量（默认 1，一个用户可拥有多条狗）",
+        "--groups", "--users", dest="groups", type=int, default=1,
+        help="设备分组数量（默认 1，仅用于运行元数据；兼容旧参数 --users）",
     )
     parser.add_argument(
         "--dogs", type=int, default=1,
@@ -279,12 +279,13 @@ def run(
     real_interval: float = 0.0,
     seed: int | None = None,
     output_dir: str | Path | None = None,
-    num_users: int = 1,
+    num_groups: int = 1,
     # api_url: str = "http://172.28.69.242:5000/api/data",
     api_url: str = os.environ.get("API_URL", "http://flask-server:5000/api/data"),
     api_key: str | None = None,
     hmac_key: str | None = None,
     export_backend: str | None = None,
+    num_users: int | None = None,
 ) -> list[dict]:
     """
     运行模拟引擎主循环（支持多线程并行生成数据）。
@@ -303,8 +304,8 @@ def run(
         随机种子
     output_dir : str | Path | None
         输出目录
-    num_users : int
-        用户数量（一个用户可拥有多条狗，狗按轮询分配给用户）
+    num_groups : int
+        设备分组数量，仅用于运行状态元数据，不参与 record 身份建模
     api_url : str
         Flask 服务器 API 地址（HttpExporter 的目标）
     api_key : str | None
@@ -315,19 +316,24 @@ def run(
         主通道导出后端："http" 或 "mq"。
         - http: 使用 HttpExporter 直接 POST 到 Flask /api/data
         - mq  : 使用 MqExporter 发布到 RabbitMQ 队列，由 mq-worker 消费写库
+    num_users : int | None
+        已废弃的兼容参数；如传入则映射到 num_groups
 
     Returns
     -------
     list[dict]
         所有生成的记录列表（方便测试/调试）
     """
+    if num_users is not None:
+        num_groups = num_users
+
     out_path = Path(output_dir) if output_dir else _DEFAULT_OUTPUT_DIR
     out_path.mkdir(parents=True, exist_ok=True)
 
 
     # ── 创建项圈（SmartCollar 实例）──
     # 每只狗使用 (seed + i) 作为随机种子，确保不同狗有不同的随机序列但整体可复现
-    # 狗按轮询方式分配给用户（dog_i → user_ids[i % num_users]）
+    # record 身份只由 device_id 表达；num_groups 仅用于状态展示等元数据
     collars: list[SmartCollar] = []
     for i in range(num_dogs):
         dog_seed = (seed + i) if seed is not None else None
@@ -366,7 +372,7 @@ def run(
     # engine_status.json 让 TUI/GUI 知道引擎的运行状态
     write_engine_status(out_path, {
         "running": True,
-        "num_users": num_users,
+        "num_groups": num_groups,
         "num_dogs": num_dogs,
         "total_ticks": num_ticks,
         "tick_minutes": tick_minutes,
@@ -458,7 +464,7 @@ def run(
                 if (tick + 1) % 50 == 0 or tick == num_ticks - 1:
                     write_engine_status(out_path, {
                         "running": True,
-                        "num_users": num_users,
+                        "num_groups": num_groups,
                         "num_dogs": num_dogs,
                         "total_ticks": num_ticks,
                         "tick_minutes": tick_minutes,
@@ -486,7 +492,7 @@ def run(
         # 写入最终引擎状态（running=False）
         write_engine_status(out_path, {
             "running": False,
-            "num_users": num_users,
+            "num_groups": num_groups,
             "num_dogs": num_dogs,
             "total_ticks": num_ticks,
             "tick_minutes": tick_minutes,
@@ -508,8 +514,8 @@ def main(argv: list[str] | None = None) -> None:
     CLI 入口——解析命令行参数并启动模拟引擎。
 
     典型用法：
-        python -m engine.main                                  # 默认 1 用户 1 只狗, 100 ticks
-        python -m engine.main --users 2 --dogs 6 --ticks 500   # 2 用户 6 只狗, 500 ticks
+        python -m engine.main                                   # 默认 1 分组 1 只狗, 100 ticks
+        python -m engine.main --groups 2 --dogs 6 --ticks 500   # 2 分组 6 只狗, 500 ticks
         python -m engine.main --seed 42 --interval 2           # 可复现, 每 2 秒一轮
     """
     args = parse_args(argv)
@@ -523,8 +529,8 @@ def main(argv: list[str] | None = None) -> None:
 
     logger.info("PetNode 引擎启动")
     logger.info(
-        "参数: users=%d, dogs=%d, ticks=%d, tick_minutes=%d, interval=%.2f, seed=%s, api=%s",
-        args.users, args.dogs, args.ticks, args.tick_minutes,
+        "参数: groups=%d, dogs=%d, ticks=%d, tick_minutes=%d, interval=%.2f, seed=%s, api=%s",
+        args.groups, args.dogs, args.ticks, args.tick_minutes,
         args.interval, args.seed, args.api_url,
     )
 
@@ -536,7 +542,7 @@ def main(argv: list[str] | None = None) -> None:
         real_interval=args.interval,
         seed=args.seed,
         output_dir=args.output_dir,
-        num_users=args.users,
+        num_groups=args.groups,
         api_url=args.api_url,                        # ← 🆕 传入 Flask API 地址
         api_key=args.api_key,                        # ← 🆕 传入 API Key
         hmac_key=args.hmac_key,                      # ← 🆕 传入 HMAC 密钥

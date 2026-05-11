@@ -69,6 +69,7 @@ from datetime import datetime  # 获取当前时间（用于日志）
 
 from flask import Flask, request, jsonify  # Flask 核心：应用、请求对象、JSON 响应
 
+
 # Robust import: prefer absolute package import (helps static analysis and tools),
 # fall back to relative import when running the module as a script.
 try:
@@ -190,16 +191,10 @@ def _handle_query_request(
         return jsonify({"status": "error", "message": "limit/offset 必须是整数"}), 400
 
     try:
-        start_time = _parse_iso_datetime(
-            _first_query_arg("start_time", "start"),
-            "start_time",
-        )
-        end_time = _parse_iso_datetime(
-            _first_query_arg("end_time", "end"),
-            "end_time",
-        )
-    except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        start_time = _parse_iso_datetime(request.args.get("start_time"), "start_time")
+        end_time = _parse_iso_datetime(request.args.get("end_time"), "end_time")
+    except ValueError:
+        return jsonify({"status": "error", "message": "start_time/end_time 必须是合法的 ISO 8601 时间"}), 400
 
     if source == "mongo":
         if kind not in {"records", "stream"}:
@@ -239,6 +234,31 @@ def _handle_query_request(
 
 # 记录服务器启动以来接收到的总数据条数（用于日志和健康检查）
 _total_received: int = 0
+
+# ────────────────── 注册 vx API Blueprint ──────────────────
+
+# 将微信认证、用户信息、宠物遥测三个 Blueprint 挂载到 Flask 应用。
+# 路由前缀由各 Blueprint 自身定义（/api/v1/wechat/* / /api/v1/me / /api/v1/pets/*）。
+try:
+    from flask_server.blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
+    from flask_server.db import ensure_indexes
+except ImportError:
+    from .blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
+    from .db import ensure_indexes
+
+app.register_blueprint(wechat_bp)
+app.register_blueprint(users_bp)
+app.register_blueprint(pets_bp)
+app.register_blueprint(devices_bp)
+app.register_blueprint(family_bp)
+
+# 在启动时尝试创建 MongoDB 索引。
+# ensure_indexes() 内部已处理 PyMongoError（MongoDB 未就绪时不阻断启动）。
+# 此处的 broad catch 仅应对极少数不可预期的启动异常（例如 MongoClient 配置解析错误）。
+try:
+    ensure_indexes()
+except Exception as _idx_exc:
+    logger.warning("vx API 索引初始化出现意外异常: %s", _idx_exc)
 
 # ────────────────── API 路由 ──────────────────
 

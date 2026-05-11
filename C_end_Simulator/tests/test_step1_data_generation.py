@@ -191,7 +191,7 @@ class TestSmartCollar:
     """
 
     def test_record_fields(self):
-        """生成的记录应包含完整的 13 个必需字段"""
+        """生成的记录应包含完整的 12 个必需字段"""
         collar = SmartCollar(seed=42)
         record = collar.generate_one_record()
         expected_keys = {
