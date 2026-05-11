@@ -1315,7 +1315,7 @@ class MySQLStorage(BaseStorage):
                 now=now,
             )
 
-        self._save_anomaly(
+        self._insert_telemetry_rows(
             user_id=user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,
