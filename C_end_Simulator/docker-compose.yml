@@ -40,7 +40,7 @@ services:
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "check_running"]
       interval: 10s
-      timeout: 5s
+      timeout: 15s
       retries: 5
 
   # ─────────── MongoDB（Flask 数据持久化存储）───────────
