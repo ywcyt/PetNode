@@ -15,9 +15,9 @@ devices_bp = Blueprint("devices", __name__, url_prefix="/api/v1/devices")
 def bind_device():
     body = request.get_json(force=True, silent=True) or {}
     device_id = (body.get("device_id") or "").strip() or None
-    pet_name = (body.get("pet_name") or "").strip()
-    breed = (body.get("breed") or "").strip()
-    avatar_url = (body.get("avatar_url") or "").strip()
+    pet_name = body.get("pet_name", "").strip() if "pet_name" in body else None
+    breed = body.get("breed", "").strip() if "breed" in body else None
+    avatar_url = body.get("avatar_url", "").strip() if "avatar_url" in body else None
     weight = body.get("weight")
 
     try:

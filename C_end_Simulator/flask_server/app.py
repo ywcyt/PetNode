@@ -96,25 +96,25 @@ logger = logging.getLogger("flask_server")
 # 创建 Flask 应用实例（__name__ 让 Flask 知道当前模块的位置）
 app = Flask(__name__)
 
-# ────────────────── 初始化存储层 ──────────────────
+# ────────────────── 初始化存储层（懒加载，避免启动时 DB 不可达导致崩溃）──────────────────
 
 # MongoDB 负责全量实时数据；MySQL 负责静态档案与异常信息。
 
-mongo_storage = MongoStorage()
-mysql_storage = MySQLStorage()
 
-logger.info(
-    "Flask 数据服务器已初始化：MongoStorage, uri=%s, db=%s, collection=%s",
-    os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
-    os.environ.get("MONGO_DB", "petnode"),
-    os.environ.get("MONGO_COLLECTION", "received_records"),
-)
-logger.info(
-    "Flask 数据服务器已初始化：MySQLStorage, host=%s:%s, db=%s",
-    os.environ.get("MYSQL_HOST", "localhost"),
-    os.environ.get("MYSQL_PORT", "3306"),
-    os.environ.get("MYSQL_DB", "petnode"),
-)
+class _LazyProxy:
+    """延迟初始化代理，首次访问时才创建真正的存储实例。"""
+    def __init__(self, factory):
+        self._factory = factory
+        self._instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = self._factory()
+        return getattr(self._instance, name)
+
+
+mongo_storage = _LazyProxy(MongoStorage)
+mysql_storage = _LazyProxy(MySQLStorage)
 
 
 def _persist_record(record: dict) -> None:

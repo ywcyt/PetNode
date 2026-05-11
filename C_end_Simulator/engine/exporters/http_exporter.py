@@ -37,14 +37,13 @@ logger = logging.getLogger("engine.exporters.http")
 
 # ────────────────── 常量 ──────────────────
 
-# 默认的 Flask 服务器 API 地址
-# "flask-server" 是 docker-compose 中 Flask 容器的服务名（Docker DNS 自动解析）
-#_DEFAULT_API_URL = "http://172.28.69.242:5000/api/data"
-_DEFAULT_API_URL = os.environ.get("API_URL", "http://flask-server:5000/api/data")
-
 # 默认的离线缓存目录：C_end_Simulator/output_data/offline_cache/
-# 当 Flask 服务器不可达时，数据暂存到这个目录，网络恢复后自动补发
 _DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "output_data" / "offline_cache"
+
+
+def _default_api_url() -> str:
+    """运行时获取 API URL，避免 import 时环境变量冻结。"""
+    return os.environ.get("API_URL", "http://flask-server:5000/api/data")
 
 # HTTP 请求超时时间（秒）
 # 设为 5 秒：太短会导致正常请求也超时，太长会阻塞 Engine 主循环
@@ -78,14 +77,13 @@ class HttpExporter(BaseExporter):
 
     def __init__(
         self,
-        api_url: str = _DEFAULT_API_URL,  # Flask 服务器地址
-        cache_dir: str | Path | None = None,  # 离线缓存目录
-        timeout: int = _REQUEST_TIMEOUT,  # 请求超时秒数
-        api_key: str | None = None,  # API Key，默认从环境变量 API_KEY 读取
-        hmac_key: str | None = None,  # HMAC 密钥，默认从环境变量 HMAC_KEY 读取
+        api_url: str | None = None,
+        cache_dir: str | Path | None = None,
+        timeout: int = _REQUEST_TIMEOUT,
+        api_key: str | None = None,
+        hmac_key: str | None = None,
     ) -> None:
-        # 保存 Flask 服务器的 API 地址
-        self._url = api_url
+        self._url = api_url or _default_api_url()
 
         # 保存请求超时时间
         self._timeout = timeout
@@ -139,22 +137,20 @@ class HttpExporter(BaseExporter):
             # 使用 _sign_and_post() 计算 HMAC 签名并发送请求
             resp = self._sign_and_post(record)
 
-            # 🆕 新增：拦截鉴权错误，防止密码错误的数据被当成断网缓存起来
+            # 拦截鉴权错误，防止密码错误的数据被当成断网缓存起来
             if resp.status_code in [401, 403]:
                 logger.error("鉴权失败 (状态码 %d)，服务器拒绝接收数据。请检查 Token。", resp.status_code)
                 return
 
-            # raise_for_status(): 如果状态码不是 2xx，抛出 HTTPError 异常
-            # 例如 Flask 返回 400（数据格式错误）或 500（服务器内部错误）
             resp.raise_for_status()
 
-            # 发送成功，更新计数器
             self._sent_count += 1
-
-            # 每 100 条打印一次日志（避免刷屏）
             if self._sent_count % 100 == 0:
                 logger.info("HTTP 已发送 %d 条记录", self._sent_count)
 
+        except (TypeError, ValueError) as exc:
+            # JSON 序列化失败（含不可序列化类型），不应缓存这种数据
+            logger.error("记录序列化失败（跳过）: %s", exc)
         except requests.RequestException as exc:
             # 捕获所有 requests 异常：
             #   - ConnectionError: Flask 服务器不可达（断网/容器未启动）
@@ -179,77 +175,64 @@ class HttpExporter(BaseExporter):
             1. 扫描 offline_cache/ 目录下所有 .jsonl 缓存文件
             2. 逐个读取文件，逐行解析 JSON
             3. 尝试 POST 到 Flask
-            4. 成功 → 删除该缓存文件
-            5. 失败 → 保留该文件，停止补发（等下次 flush 再试）
-            6. 最多补发 _MAX_RETRY_PER_FLUSH 条，防止一次性补发太多
+            4. 部分成功时重写缓存文件，只保留未发送的记录，避免重复发送
+            5. 最多补发 _MAX_RETRY_PER_FLUSH 条，防止一次性补发太多
         """
-        # 扫描缓存目录下所有 .jsonl 文件，按文件名排序（时间戳排序，先进先出）
         cache_files = sorted(self._cache_dir.glob("*.jsonl"))
-
-        # 没有缓存文件，直接返回
         if not cache_files:
             return
 
-        # 记录开始补发的日志
         logger.info("开始补发离线缓存: %d 个文件", len(cache_files))
-
-        # 本次补发的计数器
         retried = 0
 
-        # 逐个处理缓存文件
         for cache_file in cache_files:
-            # 达到单次补发上限，停止（防止 Flask 过载）
             if retried >= _MAX_RETRY_PER_FLUSH:
                 logger.info("本次补发已达上限 (%d 条)，剩余下次处理", _MAX_RETRY_PER_FLUSH)
                 break
 
             try:
-                # 读取缓存文件的全部内容
-                text = cache_file.read_text(encoding="utf-8")
+                lines = cache_file.read_text(encoding="utf-8").splitlines()
+                remaining: list[str] = []
+                file_done = True
 
-                # 标记本文件是否全部补发成功
-                all_sent = True
-
-                # 逐行解析（每行是一条 JSON 记录）
-                for line in text.strip().splitlines():
-                    # 跳过空行
-                    if not line.strip():
+                for line in lines:
+                    stripped = line.strip()
+                    if not stripped:
                         continue
 
-                    # 将 JSON 字符串反序列化为 dict
-                    record = json.loads(line)
+                    if retried >= _MAX_RETRY_PER_FLUSH:
+                        file_done = False
+                        remaining.append(stripped)
+                        continue
 
                     try:
-                        # 尝试重新发送到 Flask（带 HMAC 签名）
-                        resp = self._sign_and_post(record)
-                        # 检查响应状态码
-                        resp.raise_for_status()
+                        record = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        logger.warning("跳过损坏的缓存行: %s", stripped[:80])
+                        continue
 
-                        # 补发成功，更新计数器
+                    try:
+                        resp = self._sign_and_post(record)
+                        resp.raise_for_status()
                         retried += 1
                         self._retry_count += 1
-
                     except requests.RequestException:
-                        # 补发失败（Flask 仍然不可达），标记本文件未全部发送
-                        all_sent = False
-                        # 停止处理本文件（后面的记录也不用试了，网络还是不通）
-                        break
+                        file_done = False
+                        remaining.append(stripped)
+                        break  # 网络不通，剩余行不再尝试
 
-                # 如果本文件所有记录都补发成功，删除缓存文件
-                if all_sent:
-                    cache_file.unlink()  # 删除文件
+                if file_done and not remaining:
+                    cache_file.unlink()
                     logger.info("缓存文件已补发并删除: %s", cache_file.name)
-                else:
-                    # 有记录补发失败，停止处理后续文件（网络不通，不浪费时间）
-                    logger.warning("补发中断（网络仍不可达），剩余缓存保留")
-                    break
+                elif remaining:
+                    cache_file.write_text("\n".join(remaining) + "\n", encoding="utf-8")
+                    logger.warning("部分补发完成，%d 条保留在缓存中", len(remaining))
+                    break  # 网络不通，后续文件稍后再试
 
-            except (json.JSONDecodeError, OSError) as exc:
-                # 缓存文件损坏或读取失败，记录错误并跳过
+            except OSError as exc:
                 logger.error("读取缓存文件失败: %s, 错误: %s", cache_file.name, exc)
                 continue
 
-        # 补发结束，打印汇总日志
         if retried > 0:
             logger.info("本次补发完成: 成功 %d 条, 累计补发 %d 条", retried, self._retry_count)
 

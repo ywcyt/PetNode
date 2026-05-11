@@ -26,15 +26,12 @@ services/binding.py —— 用户绑定与解绑业务逻辑
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
 from pymongo.errors import DuplicateKeyError
 
+from ..helpers import now_iso as _now_iso
+
 logger = logging.getLogger("flask_server.services.binding")
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 # ────────────────────────────────────────────────
@@ -197,18 +194,20 @@ def bind_user_to_device(
         {"user_id": user_id, "device_id": resolved_device_id}, {"_id": 0}
     )
     if existing:
-        update_doc = {
-            "pet_name": pet_name or existing.get("pet_name", ""),
-            "breed": breed or existing.get("breed", ""),
-            "avatar_url": avatar_url or existing.get("avatar_url", ""),
-            "updated_at": _now_iso(),
-        }
+        update_doc: dict = {"updated_at": _now_iso()}
+        if pet_name is not None:
+            update_doc["pet_name"] = pet_name
+        if breed is not None:
+            update_doc["breed"] = breed
+        if avatar_url is not None:
+            update_doc["avatar_url"] = avatar_url
         if weight is not None:
             update_doc["weight"] = weight
-        db["user_pets"].update_one(
-            {"user_id": user_id, "device_id": resolved_device_id},
-            {"$set": update_doc},
-        )
+        if update_doc:  # 只有存在待更新字段时才执行
+            db["user_pets"].update_one(
+                {"user_id": user_id, "device_id": resolved_device_id},
+                {"$set": update_doc},
+            )
         return {
             "bind_status": "already_bound",
             "user_id": user_id,
@@ -345,13 +344,13 @@ def assert_user_owns_pet(db, user_id: str, pet_id: str) -> None:
 
 
 def _allocate_unbound_device_id(db) -> str | None:
-    """从已上报数据中分配一个未被认领的设备 ID。"""
+    """从已上报数据中分配一个未被认领的设备 ID（最多扫描 2000 条）。"""
     used = set(db["user_pets"].distinct("device_id"))
     seen: set[str] = set()
     cursor = db["received_records"].find(
-        {"device_id": {"$exists": True, "$ne": None}},
+        {"device_id": {"$exists": True, "$ne": None, "$nin": list(used) if used else []}},
         {"_id": 0, "device_id": 1},
-    ).sort("device_id", 1)
+    ).sort("device_id", 1).limit(2000)
     for row in cursor:
         device_id = str(row.get("device_id") or "").strip()
         if not device_id or device_id in seen:

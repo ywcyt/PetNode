@@ -28,6 +28,11 @@ from flask import jsonify
 
 
 def _server_time() -> str:
+    return now_iso()
+
+
+def now_iso() -> str:
+    """返回当前 UTC 时间的 ISO 8601 字符串，供服务和蓝图复用。"""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from ..helpers import now_iso as _now_iso
+
 
 class InviteExpiredError(PermissionError):
     """邀请码过期。"""
@@ -10,10 +12,6 @@ class InviteExpiredError(PermissionError):
 
 class AlreadyInFamilyError(PermissionError):
     """已在家庭组中。"""
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def _now() -> datetime:

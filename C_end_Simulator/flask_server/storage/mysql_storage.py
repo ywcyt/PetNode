@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import pymysql
@@ -93,6 +93,7 @@ class MySQLStorage(BaseStorage):
         self._open_event_cache: dict[int, tuple[int, str]] = {}
         self._ensure_schema()
         self._seed_lookup_tables()
+        self._close_orphaned_events()
         logger.info(
             "MySQLStorage initialized: host=%s port=%s db=%s user=%s",
             self.host,
@@ -283,13 +284,34 @@ class MySQLStorage(BaseStorage):
             logger.error("Failed to seed MySQL lookup tables", exc_info=True)
             raise
 
+    def _close_orphaned_events(self) -> None:
+        """启动时关闭上次进程意外退出遗留的未关闭事件实例。"""
+        now = self._utc_now()
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM event_instance WHERE status = 1 AND end_time IS NULL"
+                )
+                row = cursor.fetchone()
+                count = row["cnt"] if row else 0
+                if count > 0:
+                    cursor.execute(
+                        "UPDATE event_instance SET status = 0, end_time = %s WHERE status = 1 AND end_time IS NULL",
+                        (now,),
+                    )
+                    self._connection.commit()
+                    logger.info("已关闭 %d 个孤儿事件实例", count)
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.warning("关闭孤儿事件实例失败（非致命）", exc_info=True)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
     @staticmethod
     def _utc_now() -> datetime:
-        return datetime.utcnow().replace(microsecond=0)
+        return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
 
     @staticmethod
     def _parse_timestamp(value: object) -> datetime:
@@ -297,12 +319,14 @@ class MySQLStorage(BaseStorage):
             return value.replace(tzinfo=None, microsecond=(value.microsecond // 1000) * 1000)
 
         if not isinstance(value, str) or not value.strip():
+            logger.warning("timestamp 为空，使用当前时间")
             return MySQLStorage._utc_now()
 
         text = value.strip().replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(text)
         except ValueError:
+            logger.warning("无法解析 timestamp: %r，使用当前时间", value)
             return MySQLStorage._utc_now()
 
         if parsed.tzinfo is not None:
@@ -311,7 +335,7 @@ class MySQLStorage(BaseStorage):
 
     @staticmethod
     def _stable_user_id(user_key: str) -> int:
-        digest = hashlib.sha1(user_key.encode("utf-8")).digest()
+        digest = hashlib.sha256(user_key.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 
@@ -332,7 +356,7 @@ class MySQLStorage(BaseStorage):
             user_id = int(raw_user_id.strip())
         else:
             text = str(raw_user_id).strip()
-            user_id = self._stable_device_id(f"user:{text}")
+            user_id = self._stable_user_id(text)
 
         username = str(record.get("username") or f"user_{user_id}")
         nick_name = str(record.get("nickname") or username)
@@ -669,15 +693,15 @@ class MySQLStorage(BaseStorage):
 
         if user_key:
             if user_key.isdigit():
-                sql.append(" AND a.user_id = %s")
-                params.append(int(user_key))
+                sql.append(" AND (a.user_id = %s OR u.username = %s)")
+                params.extend([int(user_key), user_key])
             else:
                 sql.append(" AND u.username = %s")
                 params.append(user_key)
         if device_key:
             if device_key.isdigit():
-                sql.append(" AND a.device_id = %s")
-                params.append(int(device_key))
+                sql.append(" AND (a.device_id = %s OR d.device_sn = %s)")
+                params.extend([int(device_key), device_key])
             else:
                 sql.append(" AND d.device_sn = %s")
                 params.append(device_key)
@@ -713,8 +737,8 @@ class MySQLStorage(BaseStorage):
                 user_params: list[object] = []
                 if user_key:
                     if user_key.isdigit():
-                        user_sql += " AND user_id = %s"
-                        user_params.append(int(user_key))
+                        user_sql += " AND (user_id = %s OR username = %s)"
+                        user_params.extend([int(user_key), user_key])
                     else:
                         user_sql += " AND username = %s"
                         user_params.append(user_key)
@@ -728,15 +752,15 @@ class MySQLStorage(BaseStorage):
                 device_params: list[object] = []
                 if user_key:
                     if user_key.isdigit():
-                        device_sql += " AND user_id = %s"
-                        device_params.append(int(user_key))
+                        device_sql += " AND (user_id = %s OR user_id IN (SELECT user_id FROM `user` WHERE username = %s))"
+                        device_params.extend([int(user_key), user_key])
                     else:
                         device_sql += " AND user_id IN (SELECT user_id FROM `user` WHERE username = %s)"
                         device_params.append(user_key)
                 if device_key:
                     if device_key.isdigit():
-                        device_sql += " AND device_id = %s"
-                        device_params.append(int(device_key))
+                        device_sql += " AND (device_id = %s OR device_sn = %s)"
+                        device_params.extend([int(device_key), device_key])
                     else:
                         device_sql += " AND device_sn = %s"
                         device_params.append(device_key)

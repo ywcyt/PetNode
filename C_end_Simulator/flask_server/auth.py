@@ -98,7 +98,9 @@ def require_auth(f):
             payload = decode_token(token)
             if payload.get("type") != "access":
                 raise jwt.InvalidTokenError("Not an access token")
-            g.user_id = payload["sub"]
+            g.user_id = payload.get("sub")
+            if not g.user_id:
+                raise jwt.InvalidTokenError("Token missing sub claim")
         except jwt.ExpiredSignatureError:
             return (
                 jsonify({"code": 40101, "message": "Token 已过期，请重新登录", "data": None}),

@@ -94,30 +94,40 @@ def main() -> int:
     rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
     queue_name = os.environ.get("RABBITMQ_QUEUE", "petnode.records")
 
-    mongo_storage = MongoStorage()
-    mysql_storage = MySQLStorage()
+    # 懒加载存储，避免 DB 暂不可达时 worker 无法启动
+    _mongo = None
+    _mysql = None
 
-    logger.info(
-        "mq-worker 已初始化 MongoStorage: uri=%s db=%s collection=%s",
-        os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
-        os.environ.get("MONGO_DB", "petnode"),
-        os.environ.get("MONGO_COLLECTION", "received_records"),
-    )
-    logger.info(
-        "mq-worker 已初始化 MySQLStorage: host=%s:%s db=%s",
-        os.environ.get("MYSQL_HOST", "localhost"),
-        os.environ.get("MYSQL_PORT", "3306"),
-        os.environ.get("MYSQL_DB", "petnode"),
-    )
+    def _get_mongo():
+        nonlocal _mongo
+        if _mongo is None:
+            _mongo = MongoStorage()
+            logger.info(
+                "MongoStorage 已就绪: uri=%s",
+                os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
+            )
+        return _mongo
+
+    def _get_mysql():
+        nonlocal _mysql
+        if _mysql is None:
+            _mysql = MySQLStorage()
+            logger.info(
+                "MySQLStorage 已就绪: host=%s:%s",
+                os.environ.get("MYSQL_HOST", "localhost"),
+                os.environ.get("MYSQL_PORT", "3306"),
+            )
+        return _mysql
 
     def _persist_record(record: dict) -> None:
-        mongo_storage.save(record)
+        _get_mongo().save(record)
         try:
-            mysql_storage.save(record)
+            _get_mysql().save(record)
         except Exception as exc:
             logger.warning("MySQL 持久化失败（Mongo 已保存）: %s", exc)
 
-    # 连接循环：RabbitMQ 重启/网络抖动时可自动重连
+    # 连接循环：RabbitMQ 重启/网络抖动时可自动重连（指数退避）
+    consecutive_failures = 0
     while True:
         connection = None
         try:
@@ -128,6 +138,7 @@ def main() -> int:
             channel.queue_declare(queue=queue_name, durable=True)
             channel.basic_qos(prefetch_count=50)
 
+            consecutive_failures = 0
             logger.info("mq-worker 已连接 RabbitMQ，开始消费: queue=%s", queue_name)
 
             def on_message(ch, method, properties, body: bytes):
@@ -174,14 +185,16 @@ def main() -> int:
             return 0
 
         except Exception as exc:
-            # 连接/消费异常：等待后重连
-            logger.error("mq-worker 异常，将重连: %s", exc)
+            # 连接/消费异常：指数退避后重连
+            consecutive_failures += 1
+            delay = min(2 ** consecutive_failures, 60)
+            logger.error("mq-worker 异常（连续失败 %d 次），%ds 后重连: %s", consecutive_failures, delay, exc)
             try:
                 if connection is not None and connection.is_open:
                     connection.close()
             except Exception:
                 logger.debug("关闭 RabbitMQ connection 失败", exc_info=True)
-            time.sleep(3)
+            time.sleep(delay)
 
 
 if __name__ == "__main__":
