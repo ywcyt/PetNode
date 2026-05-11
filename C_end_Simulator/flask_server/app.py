@@ -483,40 +483,6 @@ def query_profile_v1():
     return _handle_query_request(source_override="mysql", kind_override="profile")
 
 
-def _not_implemented_route(message: str):
-    def handler(**_kwargs):
-        return jsonify({"status": "error", "message": message}), 501
-
-    return handler
-
-
-for rule, methods, endpoint, message in [
-    ("/api/v1/wechat/auth", ["POST"], "wechat_auth_v1", "wechat/auth 暂未实现"),
-    ("/api/v1/wechat/bind", ["POST"], "wechat_bind_v1", "wechat/bind 暂未实现"),
-    ("/api/v1/wechat/unbind", ["POST"], "wechat_unbind_v1", "wechat/unbind 暂未实现"),
-    ("/api/v1/me", ["GET", "PUT"], "me_v1", "me 接口暂未实现"),
-    ("/api/v1/devices/bind", ["POST"], "devices_bind_v1", "devices/bind 暂未实现"),
-    ("/api/v1/devices/<device_id>/unbind", ["POST"], "devices_unbind_v1", "devices/unbind 暂未实现"),
-    ("/api/v1/pets", ["GET"], "pets_v1", "pets 列表接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/summary", ["GET"], "pet_summary_v1", "pet summary 接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/respiration/latest", ["GET"], "pet_respiration_latest_v1", "respiration/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/respiration/series", ["GET"], "pet_respiration_series_v1", "respiration/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/heart-rate/latest", ["GET"], "pet_heart_rate_latest_v1", "heart-rate/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/heart-rate/series", ["GET"], "pet_heart_rate_series_v1", "heart-rate/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/temperature/series", ["GET"], "pet_temperature_series_v1", "temperature/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/location/latest", ["GET"], "pet_location_latest_v1", "location/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/events", ["GET"], "pet_events_v1", "events 列表接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/events/<event_id>/read", ["PUT"], "pet_event_read_v1", "events/read 暂未实现"),
-    ("/api/v1/pets/<pet_id>", ["PUT"], "pet_update_v1", "pet 资料修改接口暂未实现"),
-    ("/api/v1/family", ["POST"], "family_create_v1", "family 创建接口暂未实现"),
-    ("/api/v1/family/invite", ["POST"], "family_invite_v1", "family invite 接口暂未实现"),
-    ("/api/v1/family/join", ["POST"], "family_join_v1", "family join 接口暂未实现"),
-    ("/api/v1/family/members", ["GET"], "family_members_v1", "family members 接口暂未实现"),
-    ("/api/v1/family/members/<user_id>", ["DELETE"], "family_member_remove_v1", "family member remove 接口暂未实现"),
-]:
-    app.add_url_rule(rule, endpoint=endpoint, view_func=_not_implemented_route(message), methods=methods)
-
-
 # ────────────────── 启动入口 ──────────────────
 
 # 当直接运行 python app.py 时执行（而不是被 import 时）
