@@ -86,6 +86,7 @@ class MongoStorage(BaseStorage):
         # 这些索引能提升按 user/device/时间的查询性能。
         try:
             self._collection.create_index([("device_id", 1), ("timestamp", 1)])
+            self._collection.create_index([("user_id", 1), ("timestamp", 1)])
         except Exception:
             # 索引创建失败不应阻塞主流程（例如权限受限），只记录日志
             logger.warning("MongoStorage 创建索引失败（将继续运行）", exc_info=True)
@@ -96,6 +97,24 @@ class MongoStorage(BaseStorage):
             self.db_name,
             self.collection_name,
         )
+
+    @staticmethod
+    def _normalize_timestamp(value: datetime | str) -> str:
+        if isinstance(value, datetime):
+            return value.isoformat(timespec="seconds")
+
+        text = str(value).strip()
+        if not text:
+            return text
+
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return text
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone().replace(tzinfo=None)
+        return parsed.isoformat(timespec="seconds")
 
     def save(self, record: dict) -> None:
         """保存一条数据记录到 MongoDB。
@@ -130,15 +149,15 @@ class MongoStorage(BaseStorage):
         criteria: dict[str, object] = {}
 
         if user_id:
-            criteria["user_id"] = user_id
+            criteria["user_id"] = str(user_id).strip()
         if device_id:
-            criteria["device_id"] = device_id
+            criteria["device_id"] = str(device_id).strip()
         if start_time or end_time:
             timestamp_filter: dict[str, object] = {}
             if start_time:
-                timestamp_filter["$gte"] = start_time.isoformat()
+                timestamp_filter["$gte"] = self._normalize_timestamp(start_time)
             if end_time:
-                timestamp_filter["$lte"] = end_time.isoformat()
+                timestamp_filter["$lte"] = self._normalize_timestamp(end_time)
             criteria["timestamp"] = timestamp_filter
 
         cursor = (

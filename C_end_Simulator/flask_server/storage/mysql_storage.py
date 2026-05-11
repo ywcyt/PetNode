@@ -583,6 +583,7 @@ class MySQLStorage(BaseStorage):
         self.charset = charset or os.environ.get("MYSQL_CHARSET", "utf8mb4")
         self.default_user_id = int(os.environ.get("MYSQL_DEFAULT_USER_ID", "1"))
         self.default_username = os.environ.get("MYSQL_DEFAULT_USERNAME", "petnode")
+        self.default_password_hash = os.environ.get("MYSQL_DEFAULT_PASSWORD_HASH", "")
         self.default_nick_name = os.environ.get("MYSQL_DEFAULT_NICK_NAME", "PetNode")
         self.default_device_name_prefix = os.environ.get("MYSQL_DEVICE_NAME_PREFIX", "PetNode-")
 
@@ -827,6 +828,12 @@ class MySQLStorage(BaseStorage):
         return parsed.replace(microsecond=(parsed.microsecond // 1000) * 1000)
 
     @staticmethod
+    def _stable_user_id(user_key: str) -> int:
+        digest = hashlib.sha1(user_key.encode("utf-8")).digest()
+        value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+        return value or 1
+
+    @staticmethod
     def _stable_device_id(device_sn: str) -> int:
         digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
@@ -876,13 +883,18 @@ class MySQLStorage(BaseStorage):
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    INSERT INTO device (device_id, user_id, device_sn, device_name, pet_name, is_online, activate_time, create_time, update_time)
+                    INSERT INTO device (
+                        device_id, user_id, device_sn, device_name, pet_name,
+                        is_online, activate_time, create_time, update_time
+                    )
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
+                        user_id = VALUES(user_id),
                         device_sn = VALUES(device_sn),
                         device_name = VALUES(device_name),
                         pet_name = VALUES(pet_name),
                         is_online = VALUES(is_online),
+                        activate_time = VALUES(activate_time),
                         update_time = VALUES(update_time)
                     """,
                     (
@@ -1282,34 +1294,44 @@ class MySQLStorage(BaseStorage):
 
         device_id = self._ensure_device(device_sn, now, user_id)
         is_anomaly, anomaly_code, anomaly_detail = self._detect_anomaly(record)
+
+        event_instance_id: Optional[int]
         if not is_anomaly:
-            self._ensure_active_event(
+            event_instance_id = self._ensure_active_event(
                 device_id=device_id,
                 event_name=None,
                 event_phase=None,
                 record_timestamp=record_timestamp,
                 now=now,
             )
-            return
-
-        event_name = record.get("event")
-        event_phase = record.get("event_phase")
-        event_instance_id = self._ensure_active_event(
-            device_id=device_id,
-            event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
-            event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
-            record_timestamp=record_timestamp,
-            now=now,
-        )
+        else:
+            event_name = record.get("event")
+            event_phase = record.get("event_phase")
+            event_instance_id = self._ensure_active_event(
+                device_id=device_id,
+                event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
+                event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
+                record_timestamp=record_timestamp,
+                now=now,
+            )
 
         self._save_anomaly(
             user_id=user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,
             record_timestamp=record_timestamp,
-            anomaly_code=anomaly_code,
-            anomaly_detail=anomaly_detail,
+            record=record,
         )
+
+        if is_anomaly:
+            self._save_anomaly(
+                user_id=user_id,
+                device_id=device_id,
+                event_instance_id=event_instance_id,
+                record_timestamp=record_timestamp,
+                anomaly_code=anomaly_code,
+                anomaly_detail=anomaly_detail,
+            )
 
     def close(self) -> None:
         try:

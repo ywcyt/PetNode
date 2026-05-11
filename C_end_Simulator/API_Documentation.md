@@ -1,4 +1,4 @@
-# PetNode 后端接口文档
+# PetNode Flask & MySQL 接口文档
 
 > **项目名称：** PetNode — 宠物智能项圈数据采集平台  
 > **版本：** v3.0（vx 微信端集成）  
