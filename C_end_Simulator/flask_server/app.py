@@ -96,25 +96,25 @@ logger = logging.getLogger("flask_server")
 # 创建 Flask 应用实例（__name__ 让 Flask 知道当前模块的位置）
 app = Flask(__name__)
 
-# ────────────────── 初始化存储层 ──────────────────
+# ────────────────── 初始化存储层（懒加载，避免启动时 DB 不可达导致崩溃）──────────────────
 
 # MongoDB 负责全量实时数据；MySQL 负责静态档案与异常信息。
 
-mongo_storage = MongoStorage()
-mysql_storage = MySQLStorage()
 
-logger.info(
-    "Flask 数据服务器已初始化：MongoStorage, uri=%s, db=%s, collection=%s",
-    os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
-    os.environ.get("MONGO_DB", "petnode"),
-    os.environ.get("MONGO_COLLECTION", "received_records"),
-)
-logger.info(
-    "Flask 数据服务器已初始化：MySQLStorage, host=%s:%s, db=%s",
-    os.environ.get("MYSQL_HOST", "localhost"),
-    os.environ.get("MYSQL_PORT", "3306"),
-    os.environ.get("MYSQL_DB", "petnode"),
-)
+class _LazyProxy:
+    """延迟初始化代理，首次访问时才创建真正的存储实例。"""
+    def __init__(self, factory):
+        self._factory = factory
+        self._instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = self._factory()
+        return getattr(self._instance, name)
+
+
+mongo_storage = _LazyProxy(MongoStorage)
+mysql_storage = _LazyProxy(MySQLStorage)
 
 
 def _persist_record(record: dict) -> None:
@@ -481,40 +481,6 @@ def query_profile_v1():
     if source != "mysql":
         return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
     return _handle_query_request(source_override="mysql", kind_override="profile")
-
-
-def _not_implemented_route(message: str):
-    def handler(**_kwargs):
-        return jsonify({"status": "error", "message": message}), 501
-
-    return handler
-
-
-for rule, methods, endpoint, message in [
-    ("/api/v1/wechat/auth", ["POST"], "wechat_auth_v1", "wechat/auth 暂未实现"),
-    ("/api/v1/wechat/bind", ["POST"], "wechat_bind_v1", "wechat/bind 暂未实现"),
-    ("/api/v1/wechat/unbind", ["POST"], "wechat_unbind_v1", "wechat/unbind 暂未实现"),
-    ("/api/v1/me", ["GET", "PUT"], "me_v1", "me 接口暂未实现"),
-    ("/api/v1/devices/bind", ["POST"], "devices_bind_v1", "devices/bind 暂未实现"),
-    ("/api/v1/devices/<device_id>/unbind", ["POST"], "devices_unbind_v1", "devices/unbind 暂未实现"),
-    ("/api/v1/pets", ["GET"], "pets_v1", "pets 列表接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/summary", ["GET"], "pet_summary_v1", "pet summary 接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/respiration/latest", ["GET"], "pet_respiration_latest_v1", "respiration/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/respiration/series", ["GET"], "pet_respiration_series_v1", "respiration/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/heart-rate/latest", ["GET"], "pet_heart_rate_latest_v1", "heart-rate/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/heart-rate/series", ["GET"], "pet_heart_rate_series_v1", "heart-rate/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/temperature/series", ["GET"], "pet_temperature_series_v1", "temperature/series 暂未实现"),
-    ("/api/v1/pets/<pet_id>/location/latest", ["GET"], "pet_location_latest_v1", "location/latest 暂未实现"),
-    ("/api/v1/pets/<pet_id>/events", ["GET"], "pet_events_v1", "events 列表接口暂未实现"),
-    ("/api/v1/pets/<pet_id>/events/<event_id>/read", ["PUT"], "pet_event_read_v1", "events/read 暂未实现"),
-    ("/api/v1/pets/<pet_id>", ["PUT"], "pet_update_v1", "pet 资料修改接口暂未实现"),
-    ("/api/v1/family", ["POST"], "family_create_v1", "family 创建接口暂未实现"),
-    ("/api/v1/family/invite", ["POST"], "family_invite_v1", "family invite 接口暂未实现"),
-    ("/api/v1/family/join", ["POST"], "family_join_v1", "family join 接口暂未实现"),
-    ("/api/v1/family/members", ["GET"], "family_members_v1", "family members 接口暂未实现"),
-    ("/api/v1/family/members/<user_id>", ["DELETE"], "family_member_remove_v1", "family member remove 接口暂未实现"),
-]:
-    app.add_url_rule(rule, endpoint=endpoint, view_func=_not_implemented_route(message), methods=methods)
 
 
 # ────────────────── 启动入口 ──────────────────

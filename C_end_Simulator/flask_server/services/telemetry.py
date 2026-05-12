@@ -79,6 +79,19 @@ def _build_ts_query(start: str | None, end: str | None) -> dict:
     return {"timestamp": ts_q}
 
 
+def _encode_event_cursor(item: dict) -> str:
+    """生成复合游标 (timestamp + event)，避免同时间戳事件丢失。"""
+    ts = item.get("timestamp", "")
+    ev = item.get("event", "")
+    return f"{ts}|{ev}"
+
+
+def _decode_event_cursor(cursor: str) -> tuple[str, str]:
+    """解码游标为 (timestamp, event) 对。"""
+    parts = cursor.rsplit("|", 1)
+    return parts[0], parts[1] if len(parts) > 1 else ""
+
+
 # ────────────────────────────────────────────────
 # 公开内部函数
 # ────────────────────────────────────────────────
@@ -407,10 +420,14 @@ def list_pet_events(
     if event_type:
         query["event"] = event_type
     else:
-        query["event"] = {"$ne": None, "$exists": True, "$type": "string"}
+        query["event"] = {"$ne": None, "$ne": "", "$exists": True, "$type": "string"}
 
     if cursor:
-        query["timestamp"] = {"$lt": cursor}
+        cursor_ts, cursor_id = _decode_event_cursor(cursor)
+        query["$or"] = [
+            {"timestamp": {"$lt": cursor_ts}},
+            {"timestamp": cursor_ts, "event": {"$lte": cursor_id}},
+        ]
     elif start or end:
         query.update(_build_ts_query(start, end))
 
@@ -418,14 +435,14 @@ def list_pet_events(
         db["received_records"].find(
             query,
             {"_id": 0, "timestamp": 1, "event": 1, "event_phase": 1, "behavior": 1},
-            sort=[("timestamp", -1)],
+            sort=[("timestamp", -1), ("event", -1)],
             limit=limit + 1,
         )
     )
 
     has_more = len(records) > limit
     items = records[:limit]
-    next_cursor = items[-1]["timestamp"] if has_more and items else None
+    next_cursor = _encode_event_cursor(items[-1]) if has_more and items else None
 
     items_data = [
         {
@@ -554,6 +571,4 @@ def _build_event_id(pet_id: str, row: dict) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
 
 
-def _now_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+from ..helpers import now_iso as _now_iso  # noqa: E402 (used by update_pet_profile)

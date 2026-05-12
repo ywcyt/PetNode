@@ -44,8 +44,12 @@ from engine.exporters.base_exporter import BaseExporter
 
 logger = logging.getLogger("engine.exporters.mq")
 
-_DEFAULT_RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
-_DEFAULT_QUEUE = os.environ.get("RABBITMQ_QUEUE", "petnode.records")
+def _default_rabbitmq_url() -> str:
+    return os.environ.get("RABBITMQ_URL", "amqp://guest:guest@rabbitmq:5672/")
+
+
+def _default_queue() -> str:
+    return os.environ.get("RABBITMQ_QUEUE", "petnode.records")
 
 _DEFAULT_CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "output_data" / "offline_cache"
 
@@ -58,14 +62,14 @@ class MqExporter(BaseExporter):
 
     def __init__(
         self,
-        rabbitmq_url: str = _DEFAULT_RABBITMQ_URL,
-        queue_name: str = _DEFAULT_QUEUE,
+        rabbitmq_url: str | None = None,
+        queue_name: str | None = None,
         cache_dir: str | Path | None = None,
         api_key: str | None = None,
         hmac_key: str | None = None,
     ) -> None:
-        self._url = rabbitmq_url
-        self._queue = queue_name
+        self._url = rabbitmq_url or _default_rabbitmq_url()
+        self._queue = queue_name or _default_queue()
 
         self._cache_dir = Path(cache_dir) if cache_dir else _DEFAULT_CACHE_DIR
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -95,12 +99,14 @@ class MqExporter(BaseExporter):
             self._sent_count += 1
             if self._sent_count % 200 == 0:
                 logger.info("MQ 已发布 %d 条记录", self._sent_count)
+        except (TypeError, ValueError) as exc:
+            logger.error("记录序列化失败（跳过）: %s", exc)
         except Exception as exc:
             logger.warning("MQ 发布失败（将缓存到本地）: %s", exc)
             self._cache_record(record)
 
     def flush(self) -> None:
-        """补发离线缓存目录中的记录。"""
+        """补发离线缓存目录中的记录（部分成功时重写文件避免重复发送）。"""
         cache_files = sorted(self._cache_dir.glob("cache_*.jsonl"))
         if not cache_files:
             return
@@ -114,30 +120,44 @@ class MqExporter(BaseExporter):
                 break
 
             try:
-                text = cache_file.read_text(encoding="utf-8")
-                all_sent = True
-                for line in text.strip().splitlines():
-                    if not line.strip():
+                lines = cache_file.read_text(encoding="utf-8").splitlines()
+                remaining: list[str] = []
+                file_done = True
+
+                for line in lines:
+                    stripped = line.strip()
+                    if not stripped:
                         continue
-                    record = json.loads(line)
+
+                    if retried >= _MAX_RETRY_PER_FLUSH:
+                        file_done = False
+                        remaining.append(stripped)
+                        continue
+
+                    try:
+                        record = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        logger.warning("跳过损坏的缓存行: %s", stripped[:80])
+                        continue
+
                     try:
                         self._publish_record(record)
                         retried += 1
                         self._retry_count += 1
-                        if retried >= _MAX_RETRY_PER_FLUSH:
-                            break
                     except Exception:
-                        all_sent = False
-                        break
+                        file_done = False
+                        remaining.append(stripped)
+                        break  # MQ 不可达，剩余行稍后重试
 
-                if all_sent:
+                if file_done and not remaining:
                     cache_file.unlink()
                     logger.info("缓存文件已补发并删除: %s", cache_file.name)
-                else:
-                    logger.warning("补发中断（MQ 仍不可用），剩余缓存保留")
+                elif remaining:
+                    cache_file.write_text("\n".join(remaining) + "\n", encoding="utf-8")
+                    logger.warning("部分补发完成，%d 条保留在缓存中", len(remaining))
                     break
 
-            except (json.JSONDecodeError, OSError) as exc:
+            except OSError as exc:
                 logger.error("读取缓存文件失败: %s, 错误: %s", cache_file.name, exc)
                 continue
 

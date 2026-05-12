@@ -16,76 +16,65 @@ test_remote_upload.py —— 本地电脑 → 远程服务器上传测试脚本
   python test_remote_upload.py --port 8080               # 用其他端口
 """
 
+from __future__ import annotations
+
 import argparse
 import json
-import time
+import os
 import sys
+import time
+
+import pytest
 
 try:
     import requests
 except ImportError:
-    print("❌ 缺少 requests 库，请先安装: pip install requests")
-    sys.exit(1)
-
+    requests = None  # type: ignore[assignment]
 
 # ────────────────── 配置 ──────────────────
 
-def parse_args():
-    parser = argparse.ArgumentParser(description="PetNode 远程上传测试")
-    parser.add_argument("--host", default="47.109.200.132", help="服务器地址（IP 或域名）")
-    parser.add_argument("--port", type=int, default=5000, help="Flask 端口（默认 5000）")
-    parser.add_argument("--timeout", type=int, default=5, help="请求超时秒数（默认 5）")
-    return parser.parse_args()
+_DEFAULT_HOST = os.environ.get("PETNODE_TEST_HOST", "47.109.200.132")
+_DEFAULT_PORT = int(os.environ.get("PETNODE_TEST_PORT", "5000"))
+_DEFAULT_TIMEOUT = int(os.environ.get("PETNODE_TEST_TIMEOUT", "5"))
+
+
+def _requires_requests():
+    if requests is None:
+        pytest.skip("缺少 requests 库")
+
+
+def _check_connectivity(base_url: str, timeout: int) -> bool:
+    """快速检查服务器是否可达，不可达时 pytest.skip"""
+    try:
+        r = requests.get(f"{base_url}/api/health", timeout=timeout)
+        return r.status_code == 200
+    except Exception:
+        return False
 
 
 # ────────────────── 测试用例 ──────────────────
 
-def test_connectivity(base_url: str, timeout: int) -> bool:
+
+def test_connectivity():
     """测试 1: 网络连通性"""
-    print("\n" + "=" * 60)
-    print("🔌 测试 1: 网络连通性")
-    print("=" * 60)
-
+    _requires_requests()
+    base_url = f"http://{_DEFAULT_HOST}:{_DEFAULT_PORT}"
     try:
-        start = time.time()
-        r = requests.get(f"{base_url}/api/health", timeout=timeout)
-        elapsed = time.time() - start
-
-        print(f"   状态码: {r.status_code}")
-        print(f"   响应时间: {elapsed:.3f}s")
-        print(f"   响应体: {r.text}")
-
-        if r.status_code == 200:
-            print("   ✅ 连接成功！服务器存活")
-            data = r.json()
-            print(f"   📊 服务器已接收数据: {data.get('total_received', '?')} 条")
-            return True
-        else:
-            print(f"   ⚠️  服务器返回非 200 状态码: {r.status_code}")
-            print(f"   响应内容: {r.text[:200]}")
-            return False
-
+        r = requests.get(f"{base_url}/api/health", timeout=_DEFAULT_TIMEOUT)
+        assert r.status_code == 200, f"服务器返回 {r.status_code}"
     except requests.ConnectionError:
-        print("   ❌ 连接失败！可能的原因:")
-        print("      1. 服务器上 Flask 容器未运行")
-        print("      2. 服务器防火墙/安全组未放行 5000 端口")
-        print("      3. 服��器 IP 或域名不正确")
-        return False
+        pytest.skip(f"无法连接到 {base_url}（服务器不可达）")
     except requests.Timeout:
-        print(f"   ❌ 连接超时（{timeout}s）！服务器可能不可达")
-        return False
-    except Exception as e:
-        print(f"   ❌ 未知错误: {e}")
-        return False
+        pytest.skip(f"连接 {base_url} 超时")
 
 
-def test_single_upload(base_url: str, timeout: int) -> bool:
+def test_single_upload():
     """测试 2: 单条数据上传"""
-    print("\n" + "=" * 60)
-    print("📤 测试 2: 单条数据上传")
-    print("=" * 60)
+    _requires_requests()
+    base_url = f"http://{_DEFAULT_HOST}:{_DEFAULT_PORT}"
+    if not _check_connectivity(base_url, _DEFAULT_TIMEOUT):
+        pytest.skip(f"服务器 {base_url} 不可达")
 
-    # 构造一条完整的模拟数据（与 SmartCollar 输出格式完全一致）
     record = {
         "device_id": "local_test_001",
         "timestamp": "2025-06-01T12:00:00",
@@ -101,48 +90,21 @@ def test_single_upload(base_url: str, timeout: int) -> bool:
         "event_phase": None,
     }
 
-    print(f"   发送数据: device_id={record['device_id']}, behavior={record['behavior']}")
-
     try:
-        start = time.time()
-        r = requests.post(
-            f"{base_url}/api/data",
-            json=record,
-            timeout=timeout,
-        )
-        elapsed = time.time() - start
-
-        print(f"   状态码: {r.status_code}")
-        print(f"   响应时间: {elapsed:.3f}s")
-        print(f"   响应体: {r.text}")
-
-        if r.status_code == 200:
-            print("   ✅ 上传成功！")
-            if elapsed < 1.0:
-                print(f"   ✅ 响应时间 {elapsed:.3f}s < 1s，满足要求")
-            else:
-                print(f"   ⚠️  响应时间 {elapsed:.3f}s >= 1s，超出要求")
-            return True
-        else:
-            print(f"   ❌ 上传失败: {r.status_code}")
-            return False
-
-    except Exception as e:
-        print(f"   ❌ 请求异常: {e}")
-        return False
+        r = requests.post(f"{base_url}/api/data", json=record, timeout=_DEFAULT_TIMEOUT)
+        assert r.status_code == 200, f"上传失败: {r.status_code}"
+    except requests.RequestException as e:
+        pytest.fail(f"请求异常: {e}")
 
 
-def test_batch_upload(base_url: str, timeout: int, count: int = 10) -> bool:
-    """测试 3: 批量数据上传（模拟连续发送）"""
-    print("\n" + "=" * 60)
-    print(f"📦 测试 3: 批量上传 {count} 条数据")
-    print("=" * 60)
+def test_batch_upload():
+    """测试 3: 批量数据上传"""
+    _requires_requests()
+    base_url = f"http://{_DEFAULT_HOST}:{_DEFAULT_PORT}"
+    if not _check_connectivity(base_url, _DEFAULT_TIMEOUT):
+        pytest.skip(f"服务器 {base_url} 不可达")
 
-    success = 0
-    fail = 0
-    total_time = 0.0
-    max_time = 0.0
-
+    count = 10
     for i in range(count):
         record = {
             "device_id": f"batch_device_{i:03d}",
@@ -160,162 +122,85 @@ def test_batch_upload(base_url: str, timeout: int, count: int = 10) -> bool:
         }
 
         try:
-            start = time.time()
-            r = requests.post(f"{base_url}/api/data", json=record, timeout=timeout)
-            elapsed = time.time() - start
-
-            total_time += elapsed
-            max_time = max(max_time, elapsed)
-
-            if r.status_code == 200:
-                success += 1
-            else:
-                fail += 1
-                print(f"   ⚠️  第 {i+1} 条失败: {r.status_code} {r.text[:100]}")
-
-        except Exception as e:
-            fail += 1
-            print(f"   ❌ 第 {i+1} 条异常: {e}")
-
-    avg_time = total_time / count if count > 0 else 0
-
-    print(f"\n   📊 结果统计:")
-    print(f"      成功: {success}/{count}")
-    print(f"      失败: {fail}/{count}")
-    print(f"      平均响应时间: {avg_time:.3f}s")
-    print(f"      最大响应时间: {max_time:.3f}s")
-    print(f"      总耗时: {total_time:.3f}s")
-
-    if success == count:
-        print("   ✅ 全部上传成功！")
-        if max_time < 1.0:
-            print(f"   ✅ 最大响应时间 {max_time:.3f}s < 1s，满足要求")
-        return True
-    else:
-        print(f"   ❌ 有 {fail} 条失败")
-        return False
+            r = requests.post(f"{base_url}/api/data", json=record, timeout=_DEFAULT_TIMEOUT)
+            assert r.status_code == 200, f"第 {i+1} 条失败: {r.status_code}"
+        except requests.RequestException as e:
+            pytest.fail(f"第 {i+1} 条异常: {e}")
 
 
-def test_invalid_request(base_url: str, timeout: int) -> bool:
+def test_invalid_request():
     """测试 4: 异常请求（服务器应该正确拒绝）"""
-    print("\n" + "=" * 60)
-    print("🚫 测试 4: 异常请求处理")
-    print("=" * 60)
-
-    all_pass = True
+    _requires_requests()
+    base_url = f"http://{_DEFAULT_HOST}:{_DEFAULT_PORT}"
+    if not _check_connectivity(base_url, _DEFAULT_TIMEOUT):
+        pytest.skip(f"服务器 {base_url} 不可达")
 
     # 4a: 发送空 body
-    print("\n   4a: 发送空请求体...")
-    try:
-        r = requests.post(f"{base_url}/api/data", data="", timeout=timeout,
-                          headers={"Content-Type": "application/json"})
-        if r.status_code == 400:
-            print(f"      ✅ 正确拒绝 (400): {r.json().get('message', '')}")
-        else:
-            print(f"      ⚠️  预期 400，实际 {r.status_code}")
-            all_pass = False
-    except Exception as e:
-        print(f"      ❌ 异常: {e}")
-        all_pass = False
+    r = requests.post(
+        f"{base_url}/api/data", data="", timeout=_DEFAULT_TIMEOUT,
+        headers={"Content-Type": "application/json"},
+    )
+    assert r.status_code == 400, f"空 body 预期 400，实际 {r.status_code}"
 
     # 4b: 发送非 JSON
-    print("   4b: 发送非 JSON 数据...")
-    try:
-        r = requests.post(f"{base_url}/api/data", data="this is not json", timeout=timeout)
-        if r.status_code == 400:
-            print(f"      ✅ 正确拒绝 (400)")
-        else:
-            print(f"      ⚠️  预期 400，实际 {r.status_code}")
-            all_pass = False
-    except Exception as e:
-        print(f"      ❌ 异常: {e}")
-        all_pass = False
+    r = requests.post(f"{base_url}/api/data", data="this is not json", timeout=_DEFAULT_TIMEOUT)
+    assert r.status_code == 400, f"非 JSON 预期 400，实际 {r.status_code}"
 
     # 4c: 发送 JSON 数组（非 dict）
-    print("   4c: 发送 JSON 数组（非 dict）...")
-    try:
-        r = requests.post(f"{base_url}/api/data", json=[1, 2, 3], timeout=timeout)
-        if r.status_code == 400:
-            print(f"      ✅ 正确拒绝 (400)")
-        else:
-            print(f"      ⚠️  预期 400，实际 {r.status_code}")
-            all_pass = False
-    except Exception as e:
-        print(f"      ❌ 异常: {e}")
-        all_pass = False
-
-    if all_pass:
-        print("\n   ✅ 异常处理全部正确！")
-    return all_pass
+    r = requests.post(f"{base_url}/api/data", json=[1, 2, 3], timeout=_DEFAULT_TIMEOUT)
+    assert r.status_code == 400, f"数组 预期 400，实际 {r.status_code}"
 
 
-def test_health_after(base_url: str, timeout: int) -> None:
-    """测试 5: 最终健康检查（确认数据都收到了）"""
-    print("\n" + "=" * 60)
-    print("📊 测试 5: 最终数据统计")
-    print("=" * 60)
+def test_health_after():
+    """测试 5: 最终健康检查"""
+    _requires_requests()
+    base_url = f"http://{_DEFAULT_HOST}:{_DEFAULT_PORT}"
+    if not _check_connectivity(base_url, _DEFAULT_TIMEOUT):
+        pytest.skip(f"服务器 {base_url} 不可达")
 
-    try:
-        r = requests.get(f"{base_url}/api/health", timeout=timeout)
-        if r.status_code == 200:
-            data = r.json()
-            print(f"   服务器状态: {data.get('status')}")
-            print(f"   累计接收: {data.get('total_received')} 条")
-            print(f"   服务器时间: {data.get('timestamp')}")
-        else:
-            print(f"   ⚠️  健康检查返回: {r.status_code}")
-    except Exception as e:
-        print(f"   ❌ 健康检查失败: {e}")
+    r = requests.get(f"{base_url}/api/health", timeout=_DEFAULT_TIMEOUT)
+    assert r.status_code == 200
+    data = r.json()
+    assert data.get("status") is not None
 
 
-# ────────────────── 主入口 ──────────────────
+# ────────────────── 命令行入口 ──────────────────
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="PetNode 远程上传测试")
+    parser.add_argument("--host", default="47.109.200.132", help="服务器地址（IP 或域名）")
+    parser.add_argument("--port", type=int, default=5000, help="Flask 端口（默认 5000）")
+    parser.add_argument("--timeout", type=int, default=5, help="请求超时秒数（默认 5）")
+    return parser.parse_args()
+
 
 def main():
+    if requests is None:
+        print("缺少 requests 库，请先安装: pip install requests")
+        sys.exit(1)
+
     args = parse_args()
     base_url = f"http://{args.host}:{args.port}"
 
-    print("🐾 PetNode 远程上传测试")
+    print("PetNode 远程上传测试")
     print(f"   目标服务器: {base_url}")
     print(f"   超时设置: {args.timeout}s")
 
-    results = {}
-
-    # 测试 1: 连通性（如果连不上，后续测试直接跳过）
-    results["连通性"] = test_connectivity(base_url, args.timeout)
-    if not results["连通性"]:
-        print("\n" + "=" * 60)
-        print("💀 服务器不可达，后续测试跳过")
-        print("请检查:")
-        print(f"  1. 服务器上 Flask 容器是否运行: docker ps | grep flask")
-        print(f"  2. 安全组是否放行端口 {args.port}: 阿里云控制台 → ECS → 安全组")
-        print(f"  3. 地址是否正确: {base_url}")
-        print("=" * 60)
+    # 连通性检查
+    try:
+        r = requests.get(f"{base_url}/api/health", timeout=args.timeout)
+        if r.status_code != 200:
+            print(f"服务器返回 {r.status_code}，跳过后续测试")
+            sys.exit(1)
+    except requests.ConnectionError:
+        print(f"无法连接到 {base_url}（服务器不可达）")
+        sys.exit(1)
+    except requests.Timeout:
+        print(f"连接 {base_url} 超时")
         sys.exit(1)
 
-    # 测试 2~5
-    results["单条上传"] = test_single_upload(base_url, args.timeout)
-    results["批量上传"] = test_batch_upload(base_url, args.timeout)
-    results["异常处理"] = test_invalid_request(base_url, args.timeout)
-    test_health_after(base_url, args.timeout)
-
-    # 汇总
-    print("\n" + "=" * 60)
-    print("📋 测试汇总")
-    print("=" * 60)
-    all_pass = True
-    for name, passed in results.items():
-        icon = "✅" if passed else "❌"
-        print(f"   {icon} {name}")
-        if not passed:
-            all_pass = False
-
-    print()
-    if all_pass:
-        print("🎉 全部通过！本地电脑可以正常上传数据到服务器！")
-    else:
-        print("⚠️  部分测试未通过，请检查上面的错误信息")
-
-    sys.exit(0 if all_pass else 1)
+    # 运行 pytest
+    sys.exit(pytest.main([__file__, "-v"]))
 
 
 if __name__ == "__main__":

@@ -26,8 +26,7 @@ GET /api/v1/pets/<pet_id>/events
 
 权限模型：
     - user_pets 集合中存在 {user_id, device_id} 记录时，认为用户有权访问该宠物。
-    - 如需注册宠物关联，请直接向 MongoDB user_pets 集合写入记录：
-        { user_id: "...", device_id: "...", pet_name: "旺财", added_at: "..." }
+    - 注册宠物关联请通过 POST /api/v1/devices/bind 接口，不要直接操作数据库。
 """
 
 from __future__ import annotations

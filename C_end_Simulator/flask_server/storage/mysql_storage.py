@@ -18,8 +18,8 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime
-from typing import Optional, cast
+from datetime import datetime, timezone
+from typing import Optional
 
 import pymysql
 from pymysql.cursors import DictCursor
@@ -29,524 +29,6 @@ from .base_storage import BaseStorage
 logger = logging.getLogger("storage.mysql")
 
 
-TRAIT_TYPES: list[tuple[int, str, str, Optional[str]]] = [
-    (1, "heart_rate", "心率", "bpm"),
-    (2, "resp_rate", "呼吸频率", "次/分钟"),
-    (3, "temperature", "体温", "°C"),
-    (4, "steps", "步数", "step"),
-    (5, "battery", "电量", "%"),
-    (6, "gps_lat", "GPS纬度", "deg"),
-    (7, "gps_lng", "GPS经度", "deg"),
-    (8, "behavior", "行为状态", None),
-]
-
-EVENT_TYPES: dict[str, tuple[int, str, int]] = {
-    "fever": (1, "发烧", 2),
-    "injury": (2, "受伤", 1),
-}
-
-
-class MySQLStorageLegacy(BaseStorage):
-    """MySQL 规范化存储实现。"""
-
-    def __init__(
-        self,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        db: Optional[str] = None,
-        user: Optional[str] = None,
-        password: Optional[str] = None,
-        charset: Optional[str] = None,
-    ) -> None:
-        self.host = host or os.environ.get("MYSQL_HOST", "localhost")
-        self.port = port or int(os.environ.get("MYSQL_PORT", "3306"))
-        self.db = db or os.environ.get("MYSQL_DB", "petnode")
-        self.user = user or os.environ.get("MYSQL_USER", "root")
-        self.password = password or os.environ.get("MYSQL_PASSWORD", "")
-        self.charset = charset or os.environ.get("MYSQL_CHARSET", "utf8mb4")
-
-        self.default_user_id = int(os.environ.get("MYSQL_DEFAULT_USER_ID", "1"))
-        self.default_username = os.environ.get("MYSQL_DEFAULT_USERNAME", "petnode")
-        self.default_password_hash = os.environ.get("MYSQL_DEFAULT_PASSWORD_HASH", "")
-        self.default_nick_name = os.environ.get("MYSQL_DEFAULT_NICK_NAME", "PetNode")
-        self.default_device_name_prefix = os.environ.get("MYSQL_DEVICE_NAME_PREFIX", "PetNode Device")
-        self.default_pet_name_prefix = os.environ.get("MYSQL_PET_NAME_PREFIX", "PetNode Pet")
-
-        try:
-            self._connection = pymysql.connect(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database=self.db,
-                charset=self.charset,
-                cursorclass=DictCursor,
-                autocommit=False,
-            )
-        except pymysql.Error:
-            logger.error(
-                "MySQLStorage connection failed: %s:%d, db=%s",
-                self.host,
-                self.port,
-                self.db,
-                exc_info=True,
-            )
-            raise
-
-        self._open_events: dict[int, dict[str, object]] = {}
-        self._ensure_schema()
-        self._seed_reference_data()
-
-        logger.info(
-            "MySQLStorage initialized: %s:%d db=%s charset=%s",
-            self.host,
-            self.port,
-            self.db,
-            self.charset,
-        )
-
-    def _ensure_schema(self) -> None:
-        statements = [
-            """
-            CREATE TABLE IF NOT EXISTS `user` (
-                user_id BIGINT NOT NULL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                phone VARCHAR(11),
-                nick_name VARCHAR(30) NOT NULL,
-                create_time DATETIME(3) NOT NULL,
-                update_time DATETIME(3) NOT NULL
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS device (
-                device_id BIGINT NOT NULL PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                device_sn VARCHAR(50) NOT NULL,
-                device_name VARCHAR(50) NOT NULL,
-                pet_name VARCHAR(30) NOT NULL,
-                is_online TINYINT,
-                activate_time DATETIME(3),
-                create_time DATETIME(3) NOT NULL,
-                update_time DATETIME(3) NOT NULL,
-                UNIQUE KEY uk_device_sn (device_sn),
-                CONSTRAINT fk_device_user FOREIGN KEY (user_id) REFERENCES `user` (user_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS trait_type (
-                trait_type_id BIGINT NOT NULL PRIMARY KEY,
-                trait_code VARCHAR(50) NOT NULL,
-                trait_name VARCHAR(50) NOT NULL,
-                trait_unit VARCHAR(20),
-                create_time DATETIME(3) NOT NULL,
-                UNIQUE KEY uk_trait_code (trait_code)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS device_trait (
-                device_id BIGINT NOT NULL,
-                trait_type_id BIGINT NOT NULL,
-                is_enabled TINYINT NOT NULL,
-                create_time DATETIME(3) NOT NULL,
-                PRIMARY KEY (device_id, trait_type_id),
-                CONSTRAINT fk_device_trait_device FOREIGN KEY (device_id) REFERENCES device (device_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT,
-                CONSTRAINT fk_device_trait_trait FOREIGN KEY (trait_type_id) REFERENCES trait_type (trait_type_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS event_type (
-                event_type_id BIGINT NOT NULL PRIMARY KEY,
-                event_code VARCHAR(50) NOT NULL,
-                event_name VARCHAR(50) NOT NULL,
-                event_level TINYINT NOT NULL,
-                create_time DATETIME(3) NOT NULL,
-                UNIQUE KEY uk_event_code (event_code)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS event_instance (
-                event_instance_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                device_id BIGINT NOT NULL,
-                event_type_id BIGINT NOT NULL,
-                status TINYINT NOT NULL,
-                event_content VARCHAR(500),
-                start_time DATETIME(3) NOT NULL,
-                end_time DATETIME(3),
-                KEY idx_device_status_time (device_id, status, start_time),
-                CONSTRAINT fk_event_instance_device FOREIGN KEY (device_id) REFERENCES device (device_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT,
-                CONSTRAINT fk_event_instance_type FOREIGN KEY (event_type_id) REFERENCES event_type (event_type_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS telemetry_record (
-                record_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-                user_id BIGINT NOT NULL,
-                device_id BIGINT NOT NULL,
-                event_instance_id BIGINT,
-                trait_type_id BIGINT NOT NULL,
-                trait_value VARCHAR(100) NOT NULL,
-                timestamp DATETIME(3) NOT NULL,
-                KEY idx_device_timestamp (device_id, timestamp),
-                KEY idx_user_timestamp (user_id, timestamp),
-                KEY idx_timestamp (timestamp),
-                CONSTRAINT fk_telemetry_user FOREIGN KEY (user_id) REFERENCES `user` (user_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT,
-                CONSTRAINT fk_telemetry_device FOREIGN KEY (device_id) REFERENCES device (device_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT,
-                CONSTRAINT fk_telemetry_event FOREIGN KEY (event_instance_id) REFERENCES event_instance (event_instance_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT,
-                CONSTRAINT fk_telemetry_trait FOREIGN KEY (trait_type_id) REFERENCES trait_type (trait_type_id)
-                    ON DELETE RESTRICT ON UPDATE RESTRICT
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            """,
-        ]
-
-        try:
-            with self._connection.cursor() as cursor:
-                for statement in statements:
-                    cursor.execute(statement)
-            self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error("Failed to initialize MySQL schema", exc_info=True)
-            raise
-
-    def _seed_reference_data(self) -> None:
-        now = datetime.utcnow()
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT IGNORE INTO `user` (
-                        user_id, username, password_hash, phone, nick_name, create_time, update_time
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        self.default_user_id,
-                        self.default_username,
-                        self.default_password_hash,
-                        None,
-                        self.default_nick_name,
-                        now,
-                        now,
-                    ),
-                )
-
-                for trait_type_id, trait_code, trait_name, trait_unit in TRAIT_TYPES:
-                    cursor.execute(
-                        """
-                        INSERT IGNORE INTO trait_type (
-                            trait_type_id, trait_code, trait_name, trait_unit, create_time
-                        ) VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (trait_type_id, trait_code, trait_name, trait_unit, now),
-                    )
-
-                for event_code, (event_type_id, event_name, event_level) in EVENT_TYPES.items():
-                    cursor.execute(
-                        """
-                        INSERT IGNORE INTO event_type (
-                            event_type_id, event_code, event_name, event_level, create_time
-                        ) VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (event_type_id, event_code, event_name, event_level, now),
-                    )
-
-            self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error("Failed to seed MySQL reference data", exc_info=True)
-            raise
-
-    @staticmethod
-    def _normalize_timestamp(raw_timestamp: object) -> datetime:
-        if isinstance(raw_timestamp, datetime):
-            return raw_timestamp.replace(tzinfo=None)
-
-        if raw_timestamp is None:
-            return datetime.utcnow()
-
-        text = str(raw_timestamp).strip().replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(text)
-            return parsed.replace(tzinfo=None)
-        except ValueError:
-            return datetime.utcnow()
-
-    @staticmethod
-    def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
-        value = int.from_bytes(digest[:8], byteorder="big", signed=False)
-        value &= 0x7FFFFFFFFFFFFFFF
-        return value or 1
-
-    def _ensure_device(self, device_sn: str, timestamp: datetime) -> int:
-        device_id = self._stable_device_id(device_sn)
-        device_name = os.environ.get("MYSQL_DEVICE_NAME", f"{self.default_device_name_prefix}-{device_sn[:8]}")
-        pet_name = os.environ.get("MYSQL_PET_NAME", f"{self.default_pet_name_prefix}-{device_sn[:6]}")
-
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT device_id FROM device WHERE device_id = %s OR device_sn = %s",
-                    (device_id, device_sn),
-                )
-                row = cursor.fetchone()
-                if row is None:
-                    cursor.execute(
-                        """
-                        INSERT INTO device (
-                            device_id, user_id, device_sn, device_name, pet_name,
-                            is_online, activate_time, create_time, update_time
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            device_id,
-                            self.default_user_id,
-                            device_sn,
-                            device_name,
-                            pet_name,
-                            1,
-                            timestamp,
-                            timestamp,
-                            timestamp,
-                        ),
-                    )
-
-                    for trait_type_id, _, _, _ in TRAIT_TYPES:
-                        cursor.execute(
-                            """
-                            INSERT IGNORE INTO device_trait (
-                                device_id, trait_type_id, is_enabled, create_time
-                            ) VALUES (%s, %s, %s, %s)
-                            """,
-                            (device_id, trait_type_id, 1, timestamp),
-                        )
-
-                    self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error("Failed to ensure device row for device_sn=%s", device_sn, exc_info=True)
-            raise
-
-        return device_id
-
-    def _ensure_event_type(self, event_name: str, timestamp: datetime) -> int:
-        if event_name not in EVENT_TYPES:
-            event_type_id = int.from_bytes(hashlib.sha256(event_name.encode("utf-8")).digest()[:6], "big")
-            event_type_id &= 0x7FFFFFFFFFFFFFFF
-            event_type_id = event_type_id or 1
-            event_level = 1
-            event_code = event_name
-            event_display_name = event_name
-        else:
-            event_type_id, event_display_name, event_level = EVENT_TYPES[event_name]
-            event_code = event_name
-
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT event_type_id FROM event_type WHERE event_type_id = %s OR event_code = %s",
-                    (event_type_id, event_code),
-                )
-                if cursor.fetchone() is None:
-                    cursor.execute(
-                        """
-                        INSERT INTO event_type (
-                            event_type_id, event_code, event_name, event_level, create_time
-                        ) VALUES (%s, %s, %s, %s, %s)
-                        """,
-                        (event_type_id, event_code, event_display_name, event_level, timestamp),
-                    )
-                    self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error("Failed to ensure event type for event_name=%s", event_name, exc_info=True)
-            raise
-
-        return event_type_id
-
-    def _close_open_event(self, device_id: int, timestamp: datetime) -> None:
-        cached = self._open_events.pop(device_id, None)
-        if cached is None:
-            return
-
-        event_instance_id = cast(int, cached["event_instance_id"])
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE event_instance
-                    SET status = 0, end_time = %s, event_content = %s
-                    WHERE event_instance_id = %s
-                    """,
-                    (
-                        timestamp,
-                        cached.get("event_content"),
-                        event_instance_id,
-                    ),
-                )
-            self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error(
-                "Failed to close event instance: device_id=%s event_instance_id=%s",
-                device_id,
-                event_instance_id,
-                exc_info=True,
-            )
-            raise
-
-    def _ensure_open_event(
-        self,
-        device_id: int,
-        event_name: str,
-        event_phase: Optional[str],
-        timestamp: datetime,
-    ) -> int:
-        event_type_id = self._ensure_event_type(event_name, timestamp)
-        cached = self._open_events.get(device_id)
-
-        event_content = json.dumps(
-            {
-                "event": event_name,
-                "event_phase": event_phase,
-                "timestamp": timestamp.isoformat(timespec="milliseconds"),
-            },
-            ensure_ascii=False,
-        )
-
-        if cached is not None and cached.get("event_name") == event_name:
-            event_instance_id = cast(int, cached["event_instance_id"])
-            try:
-                with self._connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE event_instance
-                        SET event_content = %s
-                        WHERE event_instance_id = %s
-                        """,
-                        (event_content, event_instance_id),
-                    )
-                self._connection.commit()
-            except pymysql.Error:
-                self._connection.rollback()
-                logger.error(
-                    "Failed to update open event instance: device_id=%s event_instance_id=%s",
-                    device_id,
-                    event_instance_id,
-                    exc_info=True,
-                )
-                raise
-            cached["event_content"] = event_content
-            return event_instance_id
-
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO event_instance (
-                        device_id, event_type_id, status, event_content, start_time, end_time
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    (device_id, event_type_id, 1, event_content, timestamp, None),
-                )
-                event_instance_id = int(cursor.lastrowid)
-            self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error(
-                "Failed to create event instance: device_id=%s event_name=%s",
-                device_id,
-                event_name,
-                exc_info=True,
-            )
-            raise
-
-        self._open_events[device_id] = {
-            "event_name": event_name,
-            "event_instance_id": event_instance_id,
-            "event_content": event_content,
-        }
-        return event_instance_id
-
-    def _insert_telemetry_rows(
-        self,
-        user_id: int,
-        device_id: int,
-        event_instance_id: Optional[int],
-        timestamp: datetime,
-        record: dict,
-    ) -> None:
-        rows = [
-            (user_id, device_id, event_instance_id, 1, str(record.get("heart_rate")), timestamp),
-            (user_id, device_id, event_instance_id, 2, str(record.get("resp_rate")), timestamp),
-            (user_id, device_id, event_instance_id, 3, str(record.get("temperature")), timestamp),
-            (user_id, device_id, event_instance_id, 4, str(record.get("steps")), timestamp),
-            (user_id, device_id, event_instance_id, 5, str(record.get("battery")), timestamp),
-            (user_id, device_id, event_instance_id, 6, str(record.get("gps_lat")), timestamp),
-            (user_id, device_id, event_instance_id, 7, str(record.get("gps_lng")), timestamp),
-            (user_id, device_id, event_instance_id, 8, str(record.get("behavior")), timestamp),
-        ]
-
-        try:
-            with self._connection.cursor() as cursor:
-                cursor.executemany(
-                    """
-                    INSERT INTO telemetry_record (
-                        user_id, device_id, event_instance_id, trait_type_id, trait_value, timestamp
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    """,
-                    rows,
-                )
-            self._connection.commit()
-        except pymysql.Error:
-            self._connection.rollback()
-            logger.error(
-                "Failed to insert telemetry rows: device_id=%s event_instance_id=%s",
-                device_id,
-                event_instance_id,
-                exc_info=True,
-            )
-            raise
-
-    def save(self, record: dict) -> None:
-        if not isinstance(record, dict):
-            raise TypeError("record must be a dict")
-
-        device_sn = str(record.get("device_id") or "unknown-device")
-        timestamp = self._normalize_timestamp(record.get("timestamp"))
-        event_name = record.get("event")
-        event_phase = record.get("event_phase")
-
-        device_id = self._ensure_device(device_sn, timestamp)
-        user_id = self.default_user_id
-
-        if event_name:
-            event_instance_id = self._ensure_open_event(device_id, str(event_name), str(event_phase) if event_phase is not None else None, timestamp)
-        else:
-            self._close_open_event(device_id, timestamp)
-            event_instance_id = None
-
-        self._insert_telemetry_rows(
-            user_id=user_id,
-            device_id=device_id,
-            event_instance_id=event_instance_id,
-            timestamp=timestamp,
-            record=record,
-        )
-
-    def close(self) -> None:
-        try:
-            self._connection.close()
-        except Exception:
-            logger.warning("Error closing MySQLStorage connection", exc_info=True)
 class MySQLStorage(BaseStorage):
     """MySQL 规范化存储实现。"""
 
@@ -611,6 +93,7 @@ class MySQLStorage(BaseStorage):
         self._open_event_cache: dict[int, tuple[int, str]] = {}
         self._ensure_schema()
         self._seed_lookup_tables()
+        self._close_orphaned_events()
         logger.info(
             "MySQLStorage initialized: host=%s port=%s db=%s user=%s",
             self.host,
@@ -801,13 +284,34 @@ class MySQLStorage(BaseStorage):
             logger.error("Failed to seed MySQL lookup tables", exc_info=True)
             raise
 
+    def _close_orphaned_events(self) -> None:
+        """启动时关闭上次进程意外退出遗留的未关闭事件实例。"""
+        now = self._utc_now()
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM event_instance WHERE status = 1 AND end_time IS NULL"
+                )
+                row = cursor.fetchone()
+                count = row["cnt"] if row else 0
+                if count > 0:
+                    cursor.execute(
+                        "UPDATE event_instance SET status = 0, end_time = %s WHERE status = 1 AND end_time IS NULL",
+                        (now,),
+                    )
+                    self._connection.commit()
+                    logger.info("已关闭 %d 个孤儿事件实例", count)
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.warning("关闭孤儿事件实例失败（非致命）", exc_info=True)
+
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
 
     @staticmethod
     def _utc_now() -> datetime:
-        return datetime.utcnow().replace(microsecond=0)
+        return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
 
     @staticmethod
     def _parse_timestamp(value: object) -> datetime:
@@ -815,12 +319,14 @@ class MySQLStorage(BaseStorage):
             return value.replace(tzinfo=None, microsecond=(value.microsecond // 1000) * 1000)
 
         if not isinstance(value, str) or not value.strip():
+            logger.warning("timestamp 为空，使用当前时间")
             return MySQLStorage._utc_now()
 
         text = value.strip().replace("Z", "+00:00")
         try:
             parsed = datetime.fromisoformat(text)
         except ValueError:
+            logger.warning("无法解析 timestamp: %r，使用当前时间", value)
             return MySQLStorage._utc_now()
 
         if parsed.tzinfo is not None:
@@ -829,7 +335,7 @@ class MySQLStorage(BaseStorage):
 
     @staticmethod
     def _stable_user_id(user_key: str) -> int:
-        digest = hashlib.sha1(user_key.encode("utf-8")).digest()
+        digest = hashlib.sha256(user_key.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 
@@ -850,7 +356,7 @@ class MySQLStorage(BaseStorage):
             user_id = int(raw_user_id.strip())
         else:
             text = str(raw_user_id).strip()
-            user_id = self._stable_device_id(f"user:{text}")
+            user_id = self._stable_user_id(text)
 
         username = str(record.get("username") or f"user_{user_id}")
         nick_name = str(record.get("nickname") or username)
@@ -1187,15 +693,15 @@ class MySQLStorage(BaseStorage):
 
         if user_key:
             if user_key.isdigit():
-                sql.append(" AND a.user_id = %s")
-                params.append(int(user_key))
+                sql.append(" AND (a.user_id = %s OR u.username = %s)")
+                params.extend([int(user_key), user_key])
             else:
                 sql.append(" AND u.username = %s")
                 params.append(user_key)
         if device_key:
             if device_key.isdigit():
-                sql.append(" AND a.device_id = %s")
-                params.append(int(device_key))
+                sql.append(" AND (a.device_id = %s OR d.device_sn = %s)")
+                params.extend([int(device_key), device_key])
             else:
                 sql.append(" AND d.device_sn = %s")
                 params.append(device_key)
@@ -1231,8 +737,8 @@ class MySQLStorage(BaseStorage):
                 user_params: list[object] = []
                 if user_key:
                     if user_key.isdigit():
-                        user_sql += " AND user_id = %s"
-                        user_params.append(int(user_key))
+                        user_sql += " AND (user_id = %s OR username = %s)"
+                        user_params.extend([int(user_key), user_key])
                     else:
                         user_sql += " AND username = %s"
                         user_params.append(user_key)
@@ -1246,15 +752,15 @@ class MySQLStorage(BaseStorage):
                 device_params: list[object] = []
                 if user_key:
                     if user_key.isdigit():
-                        device_sql += " AND user_id = %s"
-                        device_params.append(int(user_key))
+                        device_sql += " AND (user_id = %s OR user_id IN (SELECT user_id FROM `user` WHERE username = %s))"
+                        device_params.extend([int(user_key), user_key])
                     else:
                         device_sql += " AND user_id IN (SELECT user_id FROM `user` WHERE username = %s)"
                         device_params.append(user_key)
                 if device_key:
                     if device_key.isdigit():
-                        device_sql += " AND device_id = %s"
-                        device_params.append(int(device_key))
+                        device_sql += " AND (device_id = %s OR device_sn = %s)"
+                        device_params.extend([int(device_key), device_key])
                     else:
                         device_sql += " AND device_sn = %s"
                         device_params.append(device_key)
@@ -1315,7 +821,7 @@ class MySQLStorage(BaseStorage):
                 now=now,
             )
 
-        self._save_anomaly(
+        self._insert_telemetry_rows(
             user_id=user_id,
             device_id=device_id,
             event_instance_id=event_instance_id,

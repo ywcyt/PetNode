@@ -210,8 +210,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="PetNode C端 智能项圈数据模拟引擎",
     )
     parser.add_argument(
-        "--groups", "--users", dest="groups", type=int, default=1,
-        help="设备分组数量（默认 1，仅用于运行元数据；兼容旧参数 --users）",
+        "--groups", type=int, default=1,
+        help="设备分组数量（默认 1，仅用于运行元数据）",
     )
     parser.add_argument(
         "--dogs", type=int, default=1,
@@ -285,7 +285,6 @@ def run(
     api_key: str | None = None,
     hmac_key: str | None = None,
     export_backend: str | None = None,
-    num_users: int | None = None,
 ) -> list[dict]:
     """
     运行模拟引擎主循环（支持多线程并行生成数据）。
@@ -316,16 +315,12 @@ def run(
         主通道导出后端："http" 或 "mq"。
         - http: 使用 HttpExporter 直接 POST 到 Flask /api/data
         - mq  : 使用 MqExporter 发布到 RabbitMQ 队列，由 mq-worker 消费写库
-    num_users : int | None
-        已废弃的兼容参数；如传入则映射到 num_groups
 
     Returns
     -------
     list[dict]
         所有生成的记录列表（方便测试/调试）
     """
-    if num_users is not None:
-        num_groups = num_users
 
     out_path = Path(output_dir) if output_dir else _DEFAULT_OUTPUT_DIR
     out_path.mkdir(parents=True, exist_ok=True)

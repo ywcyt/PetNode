@@ -64,9 +64,9 @@ class TestParseArgs:
         assert args.output_dir == "/tmp/test_out"
         assert args.log_level == "DEBUG"
 
-    def test_legacy_users_alias(self):
-        """旧参数 --users 仍可作为 --groups 的兼容别名使用"""
-        args = parse_args(["--users", "2"])
+    def test_groups_parameter(self):
+        """--groups 参数正确解析"""
+        args = parse_args(["--groups", "2"])
         assert args.groups == 2
 
 
