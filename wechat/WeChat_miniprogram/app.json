@@ -1,0 +1,23 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/petDetail/petDetail",
+    "pages/login/login",
+    "pages/health/health",
+    "pages/profile/profile"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "PetNode 爱宠健康",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationStyle": "custom"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  
+  "permission": {
+    "scope.userLocation": {
+      "desc": "PetNode 需要获取您的位置"
+    }
+  }
+}

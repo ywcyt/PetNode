@@ -1,0 +1,178 @@
+/* 修改：外层必须有明确高度，scroll-view 才能生效 */
+.detail-container {
+  width: 100vw;
+  height: 100vh;
+  background-color: #000000;
+}
+
+/* ================= 悬浮返回按钮 ================= */
+.custom-back-btn {
+  position: fixed; /* 固定在左上角，不随页面滑动而消失 */
+  top: 100rpx; /* 避开手机顶部的刘海/状态栏 */
+  left: 30rpx;
+  width: 72rpx;
+  height: 72rpx;
+  background-color: rgba(0, 0, 0, 0.5); /* 半透明黑色底 */
+  backdrop-filter: blur(10px); /* 毛玻璃效果 */
+  border-radius: 50%; /* 圆形按钮 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999; /* 确保在地图最上层 */
+}
+
+/* 纯 CSS 画的返回箭头 */
+.back-arrow {
+  width: 20rpx;
+  height: 20rpx;
+  border-top: 4rpx solid #ffffff;
+  border-left: 4rpx solid #ffffff;
+  transform: rotate(-45deg);
+  margin-left: 8rpx; /* 微调居中 */
+}
+
+/* ================= 地图区域 ================= */
+.map-section {
+  width: 100%;
+  height: 50vh; /* 地图初始依然占半屏 */
+}
+
+.realtime-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* ================= 健康数据区域 ================= */
+.health-section {
+  width: 100%;
+  background-color: #000000;
+  padding-top: 40rpx;
+  /* ⚠️修改核心：删除了这里原来的 height: 50vh，让内容自然往下撑开 */
+}
+/* 独立的数据卡片 */
+.chart-card {
+  margin: 0 30rpx 40rpx 30rpx; /* 宽度稍窄，留出边距 */
+  background-color: #1c1c1e; /* 苹果规范的高级深灰卡片色 */
+  border-radius: 32rpx;
+  padding: 30rpx;
+}
+
+/* 卡片头部文字排版 */
+.card-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 30rpx;
+}
+
+.chart-title {
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: bold;
+  margin-bottom: 10rpx;
+}
+
+.average-data {
+  display: flex;
+  align-items: baseline;
+}
+
+.avg-number {
+  color: #ffffff;
+  font-size: 60rpx;
+  font-weight: 900;
+}
+
+.avg-unit {
+  color: #888888;
+  font-size: 28rpx;
+  margin-left: 10rpx;
+}
+
+.date-range {
+  color: #888888;
+  font-size: 24rpx;
+  margin-top: 10rpx;
+}
+
+/* ================= CSS 柱状图核心 ================= */
+.css-chart-box {
+  width: 100%;
+  height: 300rpx; /* 图表区域高度固定 */
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end; /* 让所有的柱子沉底对齐 */
+  padding-bottom: 50rpx; /* 留给 X 轴文字的空间 */
+  border-bottom: 1rpx solid #333333; /* 浅浅的底线 */
+}
+
+.bar-wrapper {
+  width: 10%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end; /* 柱子沉底 */
+  justify-content: center;
+}
+
+.bar {
+  width: 100%;
+  border-radius: 8rpx 8rpx 0 0; /* 柱子顶部加点圆角更平滑 */
+  transition: height 0.5s ease-out; /* 让数据刷新时有个拔高的动画 */
+}
+
+/* X 轴的星期文字 */
+.x-axis {
+  position: absolute;
+  bottom: 10rpx;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  color: #888888;
+  font-size: 20rpx;
+}
+
+/* ================= 摘要折叠组件 ================= */
+.summary-box {
+  margin-top: 30rpx;
+  background-color: #2c2c2e; /* 比卡片底色再浅一点的灰色 */
+  border-radius: 20rpx;
+  padding: 20rpx;
+  overflow: hidden;
+  transition: max-height 0.3s ease; /* 折叠/展开的丝滑过渡动画 */
+  max-height: 120rpx; /* 默认折叠状态的高度 (大约1/3) */
+}
+
+/* 展开状态覆盖类 */
+.summary-box.expanded {
+  max-height: 500rpx; /* 展开后给予足够的空间 */
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16rpx;
+}
+
+.summary-icon {
+  font-size: 24rpx;
+  margin-right: 10rpx;
+}
+
+.summary-label {
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: bold;
+  flex: 1; /* 撑开中间，把按钮推到最右 */
+}
+
+.toggle-btn {
+  color: #007aff; /* 经典的苹果可点击蓝色 */
+  font-size: 24rpx;
+}
+
+.summary-content {
+  color: #ffffff;
+  font-size: 28rpx;
+  line-height: 1.5;
+}
