@@ -1,0 +1,13 @@
+<view class="container">
+  <view class="header">
+    <image class="logo-image" src="/images/logo.png" mode="aspectFit"></image>
+    <text class="title">PetNode</text>
+    <text class="subtitle">更懂你的爱宠</text>
+  </view>
+
+  <view class="main">
+    <button class="btn-login" type="primary" bindtap="handleWechatLogin" loading="{{isLoading}}">微信一键登录</button>
+    <text class="tips">首次登录将自动注册并绑定微信</text>
+  </view>
+  
+</view>
