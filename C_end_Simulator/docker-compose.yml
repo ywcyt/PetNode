@@ -68,10 +68,10 @@ services:
     ports:
       - "3306:3306"                          # MySQL 标准端口
     environment:
-      - MYSQL_ROOT_PASSWORD=petnode_root_2026  # root 用户密码
+      - MYSQL_ROOT_PASSWORD=REPLACE_WITH_YOUR_MYSQL_ROOT_PASSWORD  # root 用户密码
       - MYSQL_DATABASE=petnode               # 初始化数据库名
-      - MYSQL_USER=petnode_user              # 普通用户
-      - MYSQL_PASSWORD=petnode_password_2026 # 普通用户密码
+      - MYSQL_USER=REPLACE_WITH_YOUR_MYSQL_USER              # 普通用户
+      - MYSQL_PASSWORD=REPLACE_WITH_YOUR_MYSQL_PASSWORD # 普通用户密码
       - TZ=UTC                               # 时区设置为 UTC
     volumes:
       - mysql_data:/var/lib/mysql            # 数据持久化
@@ -101,8 +101,8 @@ services:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DB=petnode
-      - MYSQL_USER=petnode_user
-      - MYSQL_PASSWORD=petnode_password_2026
+      - MYSQL_USER=REPLACE_WITH_YOUR_MYSQL_USER
+      - MYSQL_PASSWORD=REPLACE_WITH_YOUR_MYSQL_PASSWORD
       - MYSQL_DEFAULT_USERNAME=petnode_admin
       - MYSQL_DEFAULT_PASSWORD_HASH=REPLACE_WITH_YOUR_MYSQL_DEFAULT_PASSWORD_HASH
       - MYSQL_CHARSET=utf8mb4
@@ -142,8 +142,8 @@ services:
       - MYSQL_HOST=mysql
       - MYSQL_PORT=3306
       - MYSQL_DB=petnode
-      - MYSQL_USER=petnode_user
-      - MYSQL_PASSWORD=petnode_password_2026
+      - MYSQL_USER=REPLACE_WITH_YOUR_MYSQL_USER
+      - MYSQL_PASSWORD=REPLACE_WITH_YOUR_MYSQL_PASSWORD
       - MYSQL_DEFAULT_USERNAME=petnode_admin
       - MYSQL_DEFAULT_PASSWORD_HASH=REPLACE_WITH_YOUR_MYSQL_DEFAULT_PASSWORD_HASH
       - MYSQL_CHARSET=utf8mb4

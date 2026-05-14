@@ -34,10 +34,13 @@ nginx -t && systemctl reload nginx
 - `API_KEY`
 - `HMAC_KEY`
 - `MYSQL_ROOT_PASSWORD`
+- `MYSQL_USER`
 - `MYSQL_PASSWORD`
 - `MYSQL_DEFAULT_PASSWORD_HASH`
 
-说明：`API_KEY` 与 `HMAC_KEY` 在 `flask-server`、`mq-worker`、`engine` 三处必须保持一致。
+说明：
+- `API_KEY` 与 `HMAC_KEY` 在 `flask-server`、`mq-worker`、`engine` 三处必须保持一致。
+- `MYSQL_DEFAULT_PASSWORD_HASH` 需填写你希望设置的默认密码对应的 SHA-256 十六进制哈希值。
 
 ## 5) 基础连通性验证
 ```bash
