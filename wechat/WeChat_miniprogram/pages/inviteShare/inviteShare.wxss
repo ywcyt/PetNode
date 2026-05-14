@@ -1,0 +1,17 @@
+/* pages/inviteShare/inviteShare.wxss */
+.page-bg { width: 100vw; height: 100vh; background-color: #000000; }
+.mi-nav-header { padding-top: 110rpx; padding-left: 40rpx; padding-bottom: 40rpx; }
+.mi-back-btn { font-size: 50rpx; color: #ffffff; margin-bottom: 30rpx; padding: 10rpx 40rpx 20rpx 0; font-weight: 300; }
+.mi-nav-title { font-size: 52rpx; font-weight: 400; color: #ffffff; letter-spacing: 2rpx; }
+
+.share-group { margin-top: 60rpx; }
+
+/* 🚨 重置 button 的恶心默认样式，让它看起来像个正常的菜单项 */
+.share-btn-cell { background-color: transparent !important; padding: 40rpx !important; display: flex; justify-content: space-between; align-items: center; width: 100% !important; border-radius: 0; border-bottom: 1rpx solid #1c1c1e; }
+.share-btn-cell::after { border: none; } /* 去掉自带的边框 */
+.share-btn-cell:active { background-color: #1c1c1e !important; }
+
+.share-left { display: flex; align-items: center; }
+.wechat-icon { width: 60rpx; height: 60rpx; background-color: #07c160; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 36rpx; margin-right: 30rpx; }
+.share-name { font-size: 34rpx; color: #ffffff; font-weight: normal; }
+.arrow { color: #555; font-size: 40rpx; }

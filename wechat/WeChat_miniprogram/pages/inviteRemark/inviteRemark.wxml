@@ -1,0 +1,18 @@
+<view class="page-bg">
+  <view class="mi-nav-header">
+    <view class="mi-back-btn" bindtap="goBack">←</view>
+    <view class="mi-nav-title">设置家人备注</view>
+  </view>
+
+  <view class="tags-container">
+    <view class="tag {{activeTag === item ? 'active' : ''}}" wx:for="{{tags}}" wx:key="*this" bindtap="selectTag" data-tag="{{item}}">
+      {{item}}
+    </view>
+    <view class="tag custom">+ 自定义</view>
+  </view>
+
+  <view class="bottom-btns">
+    <view class="btn skip-btn" bindtap="goNext">暂不设置</view>
+    <view class="btn next-btn" bindtap="goNext">下一步</view>
+  </view>
+</view>

@@ -74,7 +74,7 @@ def _call_code2session(code: str) -> dict:
             "WECHAT_APP_ID/WECHAT_APP_SECRET 未配置，使用 mock 模式"
         )
         return {
-            "openid": f"mock_openid_{code[:8]}",
+            "openid": "mock_openid_devtools",
             "session_key": "mock_session_key",
         }
 

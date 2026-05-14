@@ -8,3 +8,37 @@
   padding: 200rpx 0;
   box-sizing: border-box;
 } 
+/* ================= 米家风全局沉浸式导航栏 ================= */
+/* 作用于所有子页面的头部，自动避开刘海屏 */
+.mi-nav-header {
+  padding-top: 110rpx; /* 完美避开顶部状态栏和刘海，留出呼吸感 */
+  padding-left: 40rpx;
+  padding-bottom: 40rpx;
+  background-color: transparent;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 极简返回箭头 */
+.mi-back-btn {
+  font-size: 50rpx;
+  color: #1a1a1a;
+  margin-bottom: 30rpx;
+  /* 隐形放大点击热区，随便点都能返回 */
+  padding: 10rpx 40rpx 20rpx 0; 
+  font-weight: 300;
+}
+
+/* 米家风大标题 */
+.mi-nav-title {
+  font-size: 52rpx;
+  font-weight: 400;
+  color: #1a1a1a;
+  letter-spacing: 2rpx;
+}
+
+/* 如果是深色模式页面的文字反转 */
+.dark-theme .mi-back-btn,
+.dark-theme .mi-nav-title {
+  color: #ffffff;
+}

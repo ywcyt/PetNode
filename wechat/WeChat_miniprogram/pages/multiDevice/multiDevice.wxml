@@ -1,0 +1,12 @@
+<view class="page-bg">
+  <!-- ✨ 植入米家风头部 -->
+  <view class="mi-nav-header">
+    <view class="mi-back-btn" bindtap="goBack">←</view>
+    <view class="mi-nav-title">多端管理</view>
+  </view>
+
+  <view class="group">
+    <view class="cell" bindtap="navToWatch"><text>Watch PetNode</text><text class="arrow">›</text></view>
+    <view class="cell" bindtap="navToWidget"><text>小组件</text><text class="arrow">›</text></view>
+  </view>
+</view>

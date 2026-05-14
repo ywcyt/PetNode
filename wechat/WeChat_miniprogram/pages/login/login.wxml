@@ -1,13 +1,35 @@
-<view class="container">
-  <view class="header">
-    <image class="logo-image" src="/images/logo.png" mode="aspectFit"></image>
-    <text class="title">PetNode</text>
-    <text class="subtitle">更懂你的爱宠</text>
+<view class="login-page">
+  <!-- 1. 顶部 Logo 与 Slogan 区域 -->
+  <view class="header-section">
+    <!-- 这里你可以放你们真正的 Logo 图片 -->
+    <view class="logo-box">🐾</view>
+    <view class="app-name">PetNode</view>
+    <view class="slogan">懂你的毛孩子，更懂你</view>
   </view>
 
-  <view class="main">
-    <button class="btn-login" type="primary" bindtap="handleWechatLogin" loading="{{isLoading}}">微信一键登录</button>
-    <text class="tips">首次登录将自动注册并绑定微信</text>
+  <!-- 2. 核心操作区域 -->
+  <view class="action-section">
+    <button
+      class="btn-primary"
+      bindtap="handleWechatLogin"
+      loading="{{bindStatus === 'binding'}}"
+      disabled="{{bindStatus === 'binding'}}">
+      <view class="wechat-icon">💬</view>
+      <text>{{bindStatus === 'binding' ? '注册中...' : '微信一键登录'}}</text>
+    </button>
   </view>
-  
+
+  <!-- 3. 底部协议区域 (纯手工精雕的复选框) -->
+  <view class="protocol-section" bindtap="toggleAgree">
+    <!-- 自定义复选框 (利用 CSS 和状态控制显示对勾) -->
+    <view class="custom-checkbox {{isAgreed ? 'checked' : ''}}"></view>
+    <view class="protocol-text">
+      我已阅读并同意 <text class="link" catchtap="goToProtocol">《用户服务协议》</text> 与 <text class="link" catchtap="goToPrivacy">《隐私保护政策》</text>
+    </view>
+  </view>
+
+  <!-- 4. 绝杀组件：高级暗黑风 Toast 提示框 -->
+  <view class="toast-mask {{showToast ? 'show' : ''}}">
+    <view class="toast-content">{{toastMsg}}</view>
+  </view>
 </view>

@@ -1,27 +1,33 @@
-const API = require('./utils/api.js');
-
 App({
   onLaunch() {
     const token = wx.getStorageSync('access_token');
     if (token) {
       this.globalData.token = token;
-      this.loadUserInfo();
+    }
+    const autoTheme = wx.getStorageSync('auto_theme');
+    if (autoTheme !== '') {
+      this.globalData.autoTheme = autoTheme;
     }
   },
 
-  async loadUserInfo() {
-    try {
-      const user = await API.fetchCurrentUser();
-      this.globalData.userInfo = user;
-    } catch (err) {
-      console.error('加载用户信息失败', err);
+  onShow(options) {
+    // 每次从后台切回前台时，如果没有 token 则跳转登录页
+    const token = wx.getStorageSync('access_token');
+    if (!token) {
+      this.globalData.token = null;
     }
+  },
+
+  checkLogin() {
+    const token = wx.getStorageSync('access_token');
+    return !!token;
   },
 
   globalData: {
     token: null,
     userInfo: null,
     currentPetId: null,
-    currentDeviceId: null
+    currentDeviceId: null,
+    autoTheme: true
   }
-});
+})

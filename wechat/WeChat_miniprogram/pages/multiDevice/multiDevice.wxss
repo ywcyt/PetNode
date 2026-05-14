@@ -1,0 +1,7 @@
+/* pages/multiDevice/multiDevice.wxss */
+.page-bg { width: 100vw; height: 100vh; background-color: #f5f5f5; padding-top: 40rpx; }
+.group { background-color: #fff; margin: 0 30rpx; border-radius: 20rpx; overflow: hidden; }
+.cell { display: flex; justify-content: space-between; align-items: center; padding: 35rpx 40rpx; border-bottom: 1rpx solid #f0f0f0; font-size: 32rpx; color: #333; }
+.cell:last-child { border-bottom: none; }
+.cell:active { background-color: #f9f9f9; }
+.arrow { color: #ccc; font-size: 36rpx; margin-left: 10rpx; }

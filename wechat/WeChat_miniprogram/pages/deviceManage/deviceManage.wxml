@@ -1,0 +1,15 @@
+<view class="page-bg">
+  <!-- ✨ 植入米家风头部 -->
+  <view class="mi-nav-header">
+    <view class="mi-back-btn" bindtap="goBack">←</view>
+    <view class="mi-nav-title">设备管理</view>
+  </view>
+
+  <view class="list-card" wx:for="{{devices}}" wx:key="id">
+    <view class="info-left">
+      <view class="name">{{item.name}}</view>
+      <view class="sub-info">{{item.collarInfo}}</view>
+    </view>
+    <view class="unbind-btn" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="unbind">解除绑定</view>
+  </view>
+</view>

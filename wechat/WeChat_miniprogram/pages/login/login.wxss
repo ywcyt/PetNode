@@ -1,22 +1,138 @@
-/* pages/login/login.wxss */
-.container {
+/* 页面基础：纯白背景，阻止滚动 */
+.login-page {
+  width: 100vw;
   height: 100vh;
+  background-color: #ffffff;
   display: flex;
   flex-direction: column;
-  justify-content: space-around;
   align-items: center;
-  background-color: #ffffff;
+  position: relative;
+  overflow: hidden;
 }
-.header { display: flex; flex-direction: column; align-items: center; margin-top: 100rpx; }
-/* 把之前的 .logo-placeholder 删掉，换成这个 */
-.logo-image {
-  width: 200rpx;
-  height: 200rpx;
-  margin-bottom: 20rpx;
- 
+
+/* --- 1. 头部 Logo --- */
+.header-section {
+  margin-top: 25vh; /* 黄金分割点位置 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.title { font-size: 48rpx; font-weight: bold; color: #333333; }
-.subtitle { font-size: 28rpx; color: #888888; margin-top: 10rpx; }
-.main { width: 100%; padding: 0 60rpx; box-sizing: border-box; text-align: center; }
-.btn-login { width: 100% !important; border-radius: 50rpx; font-size: 32rpx; background-color: #07c160; }
-.tips { display: block; font-size: 24rpx; color: #b2b2b2; margin-top: 30rpx; }
+.logo-box {
+  width: 160rpx;
+  height: 160rpx;
+  background-color: #f5f5f5;
+  border-radius: 40rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 80rpx;
+  margin-bottom: 30rpx;
+}
+.app-name {
+  font-size: 56rpx;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: 2rpx;
+  margin-bottom: 16rpx;
+}
+.slogan {
+  font-size: 28rpx;
+  color: #888888;
+  letter-spacing: 4rpx;
+}
+
+/* --- 2. 按钮区域 --- */
+.action-section {
+  width: 100%;
+  padding: 0 60rpx;
+  margin-top: 15vh;
+  box-sizing: border-box;
+}
+/* 微信原生绿胶囊按钮重置与美化 */
+.btn-primary {
+  width: 100% !important;
+  height: 100rpx;
+  background-color: #07c160;
+  border-radius: 50rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 500;
+  padding: 0;
+  transition: all 0.2s;
+}
+.btn-primary:active {
+  opacity: 0.8;
+  transform: scale(0.98);
+}
+.wechat-icon {
+  font-size: 40rpx;
+  margin-right: 12rpx;
+}
+
+/* --- 3. 底部协议区域 --- */
+.protocol-section {
+  position: absolute;
+  bottom: 100rpx;
+  display: flex;
+  align-items: center;
+  padding: 20rpx;
+}
+.custom-checkbox {
+  width: 30rpx;
+  height: 30rpx;
+  border: 2rpx solid #cccccc;
+  border-radius: 50%; /* 圆形显得更现代 */
+  margin-right: 16rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: all 0.2s;
+}
+/* 选中状态的 CSS 魔法：绿色背景 + 白色对勾 */
+.custom-checkbox.checked {
+  background-color: #07c160;
+  border-color: #07c160;
+}
+.custom-checkbox.checked::after {
+  content: '';
+  width: 8rpx;
+  height: 16rpx;
+  border-right: 3rpx solid #ffffff;
+  border-bottom: 3rpx solid #ffffff;
+  transform: rotate(45deg) translateY(-2rpx);
+}
+.protocol-text {
+  font-size: 24rpx;
+  color: #999999;
+}
+.link {
+  color: #576b95; /* 微信经典的链接蓝 */
+}
+
+/* --- 4. 自定义 Toast 提示框 --- */
+.toast-mask {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.toast-mask.show {
+  opacity: 1;
+  visibility: visible;
+}
+.toast-content {
+  background-color: rgba(17, 17, 17, 0.85); /* 暗黑胶囊 */
+  color: #ffffff;
+  padding: 24rpx 40rpx;
+  border-radius: 16rpx;
+  font-size: 28rpx;
+  text-align: center;
+  backdrop-filter: blur(10px);
+}

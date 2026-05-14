@@ -1,150 +1,100 @@
-// 生产环境：https://pppetnode.com/api/v1
-// 本地联调：http://localhost:5000/api/v1
-const BASE_URL = 'https://pppetnode.com/api/v1';
+/**
+ * utils/api.js
+ * PetNode 全局网络请求封装
+ *
+ * 后端统一响应格式（envelope）：
+ *   成功: { code: 0, message: "ok", data: {...}, server_time: "..." }
+ *   失败: { code: <错误码>, message: "<描述>", data: null, server_time: "..." }
+ *
+ * 本模块自动解包 envelope：Promise resolve 时直接返回 data 字段，
+ * 业务 code != 0 时走 reject。
+ */
 
+/**
+ * 后端地址，根据小程序运行环境自动切换。
+ *
+ * 微信小程序要求正式版必须配置 https 合法域名（在公众平台 → 开发管理 → 服务器域名）。
+ * 开发阶段可使用 http://127.0.0.1:5000，需在开发者工具中勾选「不校验合法域名」。
+ */
+const HOSTS = {
+  develop: 'http://127.0.0.1:5000',
+  trial:    'http://127.0.0.1:5000',   // 体验版 — 按需改为测试服务器地址
+  release:  'https://your-domain.com', // 正式版 — 上线前替换为真实域名
+};
+
+function resolveBaseUrl() {
+  try {
+    const info = wx.getAccountInfoSync();
+    const env = (info && info.miniProgram && info.miniProgram.envVersion) || 'develop';
+    return HOSTS[env] || HOSTS.develop;
+  } catch (_) {
+    return HOSTS.develop;
+  }
+}
+
+const BASE_URL = resolveBaseUrl();
+
+/**
+ * 核心请求函数
+ * @param {string}  url    - 接口路径 (例如 /api/v1/me)
+ * @param {string}  method - GET / POST / PUT / DELETE
+ * @param {object}  data   - 请求体（仅 POST/PUT 有效）
+ */
 const request = (url, method = 'GET', data = {}) => {
   return new Promise((resolve, reject) => {
+    const header = {
+      'Content-Type': 'application/json'
+    };
+
     const token = wx.getStorageSync('access_token');
+    if (token) {
+      header['Authorization'] = `Bearer ${token}`;
+    }
+
+    const fullUrl = BASE_URL + url;
+    console.log(`[API] ${method} ${fullUrl}`, data);
+
     wx.request({
-      url: BASE_URL + url,
+      url: fullUrl,
       method: method,
       data: data,
-      header: {
-        'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
-      },
+      header: header,
       success: (res) => {
-        if (res.statusCode === 200 || res.statusCode === 201) {
-          const body = res.data;
-          if (body.code === 0) {
-            resolve(body.data);
-          } else {
-            wx.showToast({ title: body.message || '请求失败', icon: 'error' });
-            reject(body);
-          }
-        } else if (res.statusCode === 401) {
-          wx.showToast({ title: '登录已过期', icon: 'none' });
+        console.log(`[API] ${method} ${url} →`, res.statusCode, res.data);
+        const envelope = res.data || {};
+        const statusCode = res.statusCode;
+
+        if (statusCode >= 200 && statusCode < 300 && envelope.code === 0) {
+          // 成功 → 解包返回 data 字段
+          resolve(envelope.data);
+        } else if (statusCode === 401 || envelope.code === 40101) {
+          // access_token 过期 / 无效
           wx.removeStorageSync('access_token');
-          wx.reLaunch({ url: '/pages/login/login' });
-          reject('Unauthorized');
+          wx.showToast({ title: '登录已过期，请重新登录', icon: 'none' });
+          reject(envelope);
+        } else if (statusCode === 404) {
+          // 404 是可预期的（如未加入家庭），静默失败
+          reject(envelope);
         } else {
-          wx.showToast({ title: (res.data && res.data.message) || '请求失败', icon: 'error' });
-          reject(res.data);
+          // 其他错误：优先用 envelope 中的 message
+          const msg = envelope.message || '请求失败';
+          wx.showToast({ title: msg, icon: 'none' });
+          reject(envelope);
         }
       },
       fail: (err) => {
-        wx.showToast({ title: '网络异常', icon: 'error' });
+        console.error(`[API] ${method} ${url} 请求失败:`, err);
+        wx.showToast({ title: '网络连接异常，请检查网络', icon: 'none' });
         reject(err);
       }
     });
   });
 };
 
-const qs = (params) => {
-  if (!params) return '';
-  const keys = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null);
-  if (keys.length === 0) return '';
-  return '?' + keys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
-};
-
 module.exports = {
-  // ===== 微信认证 =====
-  wxLoginAndAuth(code) {
-    return request('/wechat/auth', 'POST', { code });
-  },
-
-  bindWechatUser(data) {
-    return request('/wechat/bind', 'POST', data);
-  },
-
-  unbindWechat() {
-    return request('/wechat/unbind', 'POST');
-  },
-
-  // ===== 用户信息 =====
-  fetchCurrentUser() {
-    return request('/me');
-  },
-
-  updateProfile(data) {
-    return request('/me', 'PUT', data);
-  },
-
-  // ===== 设备管理 =====
-  bindDevice(data) {
-    return request('/devices/bind', 'POST', data);
-  },
-
-  unbindDevice(deviceId) {
-    return request(`/devices/${deviceId}/unbind`, 'POST');
-  },
-
-  // ===== 宠物列表与详情 =====
-  fetchPets() {
-    return request('/pets');
-  },
-
-  fetchPetSummary(petId) {
-    return request(`/pets/${petId}/summary`);
-  },
-
-  updatePet(petId, data) {
-    return request(`/pets/${petId}`, 'PUT', data);
-  },
-
-  // ===== 健康数据 =====
-  fetchRespirationLatest(petId) {
-    return request(`/pets/${petId}/respiration/latest`);
-  },
-
-  fetchRespirationSeries(petId, params = {}) {
-    return request(`/pets/${petId}/respiration/series${qs(params)}`);
-  },
-
-  fetchHeartRateLatest(petId) {
-    return request(`/pets/${petId}/heart-rate/latest`);
-  },
-
-  fetchHeartRateSeries(petId, params = {}) {
-    return request(`/pets/${petId}/heart-rate/series${qs(params)}`);
-  },
-
-  fetchTemperatureSeries(petId, params = {}) {
-    return request(`/pets/${petId}/temperature/series${qs(params)}`);
-  },
-
-  // ===== 定位 =====
-  fetchPetLocation(petId) {
-    return request(`/pets/${petId}/location/latest`);
-  },
-
-  // ===== 事件/告警 =====
-  fetchPetEvents(petId, params = {}) {
-    return request(`/pets/${petId}/events${qs(params)}`);
-  },
-
-  markEventRead(petId, eventId) {
-    return request(`/pets/${petId}/events/${eventId}/read`, 'PUT');
-  },
-
-  // ===== 家庭组 =====
-  createFamily() {
-    return request('/family', 'POST');
-  },
-
-  inviteFamily(expiresIn) {
-    return request('/family/invite', 'POST', { expires_in: expiresIn });
-  },
-
-  joinFamily(inviteToken) {
-    return request('/family/join', 'POST', { invite_token: inviteToken });
-  },
-
-  fetchFamilyMembers() {
-    return request('/family/members');
-  },
-
-  removeFamilyMember(userId) {
-    return request(`/family/members/${userId}`, 'DELETE');
-  }
+  BASE_URL,
+  get: (url, data) => request(url, 'GET', data),
+  post: (url, data) => request(url, 'POST', data),
+  put: (url, data) => request(url, 'PUT', data),
+  delete: (url, data) => request(url, 'DELETE', data)
 };

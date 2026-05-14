@@ -1,19 +1,41 @@
+<!-- 最外层容器 -->
 <view class="app-container {{isDaytime ? 'day-theme' : 'night-theme'}}">
 
+<!-- 核心滑动容器 -->
 <swiper class="main-swiper" current="{{currentTab}}" bindchange="onSwiperChange">
+  
+  <!-- ================= ⬇️ 第 0 页：支持 (Support) ================= -->
+  <swiper-item>
+    <scroll-view class="support-page" scroll-y="true">
+      <view class="support-header">
+        <text class="support-title">文章</text>
+      </view>
 
+      <view class="article-list">
+        <view class="article-card" wx:for="{{articles}}" wx:key="id">
+          <image class="article-img" src="{{item.image}}" mode="aspectFill"></image>
+          <view class="article-info">
+            <text class="article-title">{{item.title}}</text>
+            <text class="article-desc">{{item.desc}}</text>
+          </view>
+        </view>
+        <view style="height: 150rpx;"></view>
+      </view>
+    </scroll-view>
+  </swiper-item>
+
+  <!-- ================= ⬇️ 第 1 页：首页 (Home) ================= -->
   <swiper-item>
     <view class="home-page">
-
       <view class="header-bar">
         <view class="header-left">
-          <view class="scan-btn" bindtap="scanDevice">[-] 扫码添加设备</view>
+          <view class="scan-btn" bindtap="scanDevice" hover-class="btn-hover">[-] 扫码添加</view>
           <view class="page-title">全部设备</view>
         </view>
         <image class="avatar" src="/images/DefaultAvatar.png" mode="aspectFill"></image>
       </view>
 
-      <view class="device-grid" wx:if="{{devices.length > 0}}">
+      <view class="device-grid">
         <view class="device-card" wx:for="{{devices}}" wx:key="id" data-id="{{item.id}}" bindtap="goToDetail">
           <view class="card-top">
             <view class="dog-avatar-mock">{{item.avatar}}</view>
@@ -24,89 +46,117 @@
           </view>
         </view>
       </view>
-
-      <view class="empty-state" wx:if="{{devices.length === 0}}">
-        <view class="empty-icon">🐶</view>
-        <text class="empty-text">还没有绑定设备</text>
-        <text class="empty-hint">点击上方扫码按钮添加</text>
-      </view>
-
     </view>
   </swiper-item>
 
+  <!-- ================= ⬇️ 第 2 页：我的 (Profile) ================= -->
   <swiper-item>
-    <view class="blank-page">健康页面开发中...</view>
-  </swiper-item>
-
-  <swiper-item>
-    <view class="blank-page">设置页面开发中...</view>
-  </swiper-item>
-
-  <swiper-item>
-    <view class="profile-page">
-      <view class="profile-header">
-        <image class="profile-avatar" src="{{userInfo.avatar_url || '/images/DefaultAvatar.png'}}" mode="aspectFill"></image>
-        <text class="profile-nickname">{{userInfo.nickname || '未设置昵称'}}</text>
-        <text class="profile-id">ID: {{userInfo.user_id || '---'}}</text>
-      </view>
-
-      <view class="profile-menu">
-        <view class="menu-item" bindtap="editProfile">
-          <text>编辑资料</text>
-          <text class="arrow">›</text>
+    <view class="profile-bg {{isDaytime ? 'day-profile' : ''}}">
+      <scroll-view class="profile-page" scroll-y="true">
+        
+        <!-- 1. 顶部用户信息区 -->
+        <view class="user-header" bindtap="{{user_id ? '' : 'goToLogin'}}">
+          <view class="user-avatar-box">
+            <image class="user-avatar" src="{{userInfo.avatar}}" mode="aspectFill"></image>
+          </view>
+          <view class="user-info-text">
+            <view class="user-nickname">{{userInfo.nickname}} <text class="arrow">›</text></view>
+            <view class="user-id">{{userInfo.id || '点击登录以连接您的宠物'}} | 管理账号、会员权益等</view>
+            <view class="user-tags">
+              <text>{{userInfo.familyCount}}个家庭</text>
+              <text class="divider">|</text>
+              <text>{{userInfo.deviceCount}}个设备</text>
+            </view>
+          </view>
         </view>
-        <view class="menu-item" bindtap="manageFamily">
-          <text>家庭管理</text>
-          <text class="arrow">›</text>
-        </view>
-        <view class="menu-item" bindtap="manageDevices">
-          <text>设备管理</text>
-          <text class="arrow">›</text>
-        </view>
-      </view>
 
-      <view class="logout-section">
-        <view class="logout-btn" bindtap="handleLogout">
-          <text>退出登录</text>
+        <!-- 2. 家庭组卡片 -->
+        <view class="family-card">
+          <view class="family-left">
+            <text class="family-name">{{userInfo.familyName}}</text>
+            <text class="family-desc">{{userInfo.memberCount}} 个成员</text>
+          </view>
+          <view class="family-right">
+            <view class="member-avatars">
+              <image class="mini-avatar" wx:for="{{userInfo.members}}" wx:key="*this" src="{{item}}" mode="aspectFill"></image>
+              <view class="add-member-btn" bindtap="openInvitePopup">+</view>
+            </view>
+          </view>
         </view>
-      </view>
+
+        <!-- 3. 功能列表 1 -->
+        <view class="menu-card">
+            <view class="menu-item" wx:for="{{menuList1}}" wx:key="id" data-url="{{item.url}}" bindtap="navToSubPage">
+              <view class="menu-left">
+                <text class="menu-icon">{{item.icon}}</text>
+                <text class="menu-name">{{item.name}}</text>
+              </view>
+              <text class="arrow">›</text>
+            </view>
+          </view>
+
+          <view class="menu-card" style="margin-bottom: 80rpx;">
+            <view class="menu-item" wx:for="{{menuList2}}" wx:key="id" data-url="{{item.url}}" bindtap="navToSubPage">
+              <view class="menu-left">
+                <text class="menu-icon">{{item.icon}}</text>
+                <text class="menu-name">{{item.name}}</text>
+              </view>
+              <text class="arrow">›</text>
+            </view>
+            <view class="menu-item" wx:if="{{user_id}}" bindtap="handleLogout">
+              <view class="menu-left">
+                <text class="menu-icon">🚪</text>
+                <text class="menu-name" style="color: #ff3b30;">退出登录</text>
+              </view>
+            </view>
+          </view>
+
+        <view style="height: 100rpx;"></view> <!-- 底部防挡留白 -->
+      </scroll-view>
     </view>
   </swiper-item>
 
 </swiper>
 
+<!-- ================= 底部自定义导航栏 ================= -->
 <view class="custom-tab-bar">
   <view class="tab-item {{currentTab == 0 ? 'active' : ''}}" data-index="0" bindtap="switchTab">
+    <view class="tab-icon">💓</view>
+    <text class="tab-text">支持</text>
+  </view>
+  <view class="tab-item {{currentTab == 1 ? 'active' : ''}}" data-index="1" bindtap="switchTab">
     <view class="tab-icon">🐶</view>
     <text class="tab-text">首页</text>
   </view>
-  <view class="tab-item {{currentTab == 1 ? 'active' : ''}}" data-index="1" bindtap="switchTab">
-    <view class="tab-icon">📈</view>
-    <text class="tab-text">健康</text>
-  </view>
   <view class="tab-item {{currentTab == 2 ? 'active' : ''}}" data-index="2" bindtap="switchTab">
-    <view class="tab-icon">⚙️</view>
-    <text class="tab-text">设置</text>
-  </view>
-  <view class="tab-item {{currentTab == 3 ? 'active' : ''}}" data-index="3" bindtap="switchTab">
-    <view class="tab-icon">🐾</view>
+    <image class="tab-image-icon" src="/images/page3_logo.jpg" mode="aspectFit"></image>
     <text class="tab-text">我的</text>
   </view>
 </view>
-
-<!-- 绑定设备弹窗 -->
-<view class="bind-modal-mask" wx:if="{{showBindModal}}" bindtap="closeBindModal">
-  <view class="bind-modal" catchtap="">
-    <text class="bind-modal-title">绑定新设备</text>
-    <text class="bind-modal-device">设备ID: {{scannedDeviceId}}</text>
-    <input class="bind-input" placeholder="宠物名称 *" value="{{bindForm.pet_name}}" data-field="pet_name" bindinput="onBindInput" />
-    <input class="bind-input" placeholder="品种" value="{{bindForm.breed}}" data-field="breed" bindinput="onBindInput" />
-    <input class="bind-input" placeholder="体重 (kg)" type="digit" value="{{bindForm.weight}}" data-field="weight" bindinput="onBindInput" />
-    <view class="bind-modal-btns">
-      <view class="bind-btn cancel" bindtap="closeBindModal">取消</view>
-      <view class="bind-btn confirm" bindtap="submitBind">确认绑定</view>
-    </view>
-  </view>
 </view>
+<!-- ================= 邀请家人：权限选择底部弹窗 ================= -->
+<view class="popup-mask" wx:if="{{showInvitePopup}}" bindtap="closeInvitePopup"></view>
+<view class="popup-panel {{showInvitePopup ? 'show' : ''}}">
+  <view class="popup-title">请选择家人权限</view>
+  
+  <view class="role-item {{selectedRole === 'member' ? 'active' : ''}}" bindtap="selectRole" data-role="member">
+    <view class="role-info">
+      <view class="role-name">成员</view>
+      <view class="role-desc">只能查看项圈的监控数据，无法修改设备设置</view>
+    </view>
+    <view class="check-icon" wx:if="{{selectedRole === 'member'}}">✓</view>
+  </view>
 
+  <view class="role-item {{selectedRole === 'admin' ? 'active' : ''}}" bindtap="selectRole" data-role="admin">
+    <view class="role-info">
+      <view class="role-name">管理员</view>
+      <view class="role-desc">除使用设备外，可以绑定、删除设备，添加、移除家人，进行家庭管理</view>
+    </view>
+    <view class="check-icon" wx:if="{{selectedRole === 'admin'}}">✓</view>
+  </view>
+
+  <view class="popup-btn-group">
+    <view class="popup-btn cancel" bindtap="closeInvitePopup">取消</view>
+    <view class="popup-btn confirm" bindtap="goToRemark">下一步</view>
+  </view>
 </view>

@@ -2,9 +2,17 @@
   "pages": [
     "pages/index/index",
     "pages/petDetail/petDetail",
+    "pages/settings/settings",
+    "pages/joke/joke",
+    "pages/consumables/consumables",
+    "pages/deviceManage/deviceManage",
+    "pages/multiDevice/multiDevice",
+    "pages/familyManage/familyManage",
     "pages/login/login",
     "pages/health/health",
-    "pages/profile/profile"
+    "pages/profile/profile",
+    "pages/inviteRemark/inviteRemark",
+    "pages/inviteShare/inviteShare"
   ],
   "window": {
     "navigationBarTextStyle": "black",

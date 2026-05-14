@@ -1,0 +1,17 @@
+<view class="page-bg">
+  <view class="mi-nav-header">
+    <view class="mi-back-btn" bindtap="goBack">←</view>
+    <view class="mi-nav-title">选择邀请方式</view>
+  </view>
+
+  <view class="share-group">
+    <!-- 🚨 核心魔法：open-type="share" 才能直接拉起微信好友列表 -->
+    <button class="share-btn-cell" open-type="share">
+      <view class="share-left">
+        <view class="wechat-icon">💬</view>
+        <text class="share-name">微信好友</text>
+      </view>
+      <text class="arrow">›</text>
+    </button>
+  </view>
+</view>

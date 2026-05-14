@@ -73,28 +73,42 @@
 .night-theme .tab-item.active .tab-text {
   color: #81d4fa; 
 }
+
 /* ================= 苹果风头部布局 ================= */
 .header-bar {
   display: flex;
-  justify-content: space-between; /* 让标题在左，头像在右 */
-  align-items: flex-end; /* 底部对齐，让大标题的底线和头像的底线平齐，看起来更舒服 */
+  justify-content: space-between;
+  align-items: flex-end; 
   padding: 0 40rpx;
-  margin-bottom: 50rpx; /* 距离下方卡片拉开距离 */
+  margin-bottom: 50rpx; 
 }
 
-/* 左侧标题区域组 */
 .header-left {
   display: flex;
   flex-direction: column;
 }
 
-/* 扫码按钮样式 */
+/* 改造扫码按钮，隐形放大热区 */
 .scan-btn {
   font-size: 26rpx;
-  color: #2b8a53; /* 用深绿色，与淡绿色背景呼应但不刺眼 */
   font-weight: bold;
-  margin-bottom: 10rpx; /* 和下方的大标题稍微隔开一点 */
+  
+  /* 👇 核心魔法：用透明的 padding 把点击区域向上下左右撑大，虽然看不见，但极其好点 */
+  padding: 20rpx 40rpx 20rpx 0; 
+  margin-bottom: -10rpx; /* 抵消 padding 带来的向下偏移，保持原有排版 */
+  
+  position: relative;
+  z-index: 99; /* 提高层级，防止被其他透明图层遮挡 */
 }
+
+/* 点击时的反馈动画 */
+.btn-hover {
+  opacity: 0.5; /* 按下去的时候变成半透明 */
+  transform: scale(0.95); /* 按下去稍微缩小一点点，手感极佳 */
+  transition: all 0.1s;
+}
+
+
 
 /* 苹果风极简大标题 */
 .page-title {
@@ -188,216 +202,354 @@
   transition: all 0.8s ease; 
 }
 
-/* 底部单个球球容器 */
+/* 修改：底部单个容器平分剩余空间，点击更灵敏 */
 .tab-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 100rpx;
-  transition: all 0.3s; /* 点击动画过渡 */
+  flex: 1; /* 三个选项均分宽度 */
+  height: 100%;
 }
 
-/* 未选中的灰色图标 */
+/* ================= 默认状态（未选中：黑白、稍微透明、正常大小） ================= */
 .tab-icon {
   font-size: 48rpx;
   margin-bottom: 6rpx;
-  filter: grayscale(100%); 
-  opacity: 0.5;
+  filter: grayscale(100%); /* 100% 灰度，剥夺所有色彩 */
+  opacity: 0.4; /* 降低存在感 */
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); /* 丝滑的弹簧动画过渡 */
 }
 
-/* 未选中的灰色文字 */
+/* 专门针对你上传的 jpg 图片的默认状态 */
+.tab-image-icon {
+  width: 50rpx;
+  height: 50rpx;
+  margin-bottom: 6rpx;
+  filter: grayscale(100%); /* 图片也变成纯黑白 */
+  opacity: 0.4;
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .tab-text {
-  font-size: 20rpx;
+  font-size: 22rpx;
   color: #999999;
+  transition: all 0.3s ease;
 }
 
-/* ==== 点击高亮时的状态覆盖 ==== */
-/* 图标变彩色并轻微放大 */
-.tab-item.active .tab-icon {
-  filter: grayscale(0%); 
-  opacity: 1;
-  transform: scale(1.1); 
+/* ================= 高亮状态（已选中：彩色、不透明、变大） ================= */
+
+/* 当被选中（拥有 active 类名）时，图标和图片的变化 */
+.tab-item.active .tab-icon,
+.tab-item.active .tab-image-icon {
+  filter: grayscale(0%); /* 灰度降为 0，恢复原本灿烂的色彩！ */
+  opacity: 1; /* 完全不透明 */
+  transform: scale(1.3); /* 核心魔法：体积放大 30%，瞬间凸显！ */
 }
 
-/* 文字变绿加粗 */
+/* 选中时的文字变化：变深色并加粗 */
 .tab-item.active .tab-text {
-  color: #07c160;
+  color: #1a1a1a; 
   font-weight: bold;
+  transform: translateY(4rpx); /* 图标变大了，文字稍微往下躲一点点，排版更透气 */
 }
 
-/* ================= 我的页面 ================= */
+/* 夜间（星空）模式下的文字颜色修正，防止黑夜里看不见黑色文字 */
+.night-theme .tab-item.active .tab-text {
+  color: #ffffff;
+}
+/* ================= 第 0 页：支持页面 (文章列表) ================= */
+
+.support-page {
+  width: 100%;
+  height: 100%;
+  padding-top: 120rpx; /* 避开顶部状态栏 */
+  box-sizing: border-box;
+}
+
+.support-header {
+  padding: 0 40rpx;
+  margin-bottom: 30rpx;
+}
+
+.support-title {
+  font-size: 44rpx;
+  font-weight: 800;
+  color: #1a1a1a;
+}
+
+/* 白天和黑夜的大标题颜色自适应 */
+.night-theme .support-title {
+  color: #ffffff;
+}
+
+/* 卡片列表容器 */
+.article-list {
+  padding: 0 40rpx;
+}
+
+/* 🍏 核心苹果风卡片 */
+.article-card {
+  background-color: #ffffff;
+  border-radius: 32rpx; /* 大圆角 */
+  overflow: hidden; /* 切掉图片超出圆角的部分 */
+  margin-bottom: 40rpx;
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.05); /* 极其微弱的高级阴影 */
+  transition: transform 0.2s ease;
+}
+
+/* 点击卡片时的轻微回弹缩放 */
+.article-card:active {
+  transform: scale(0.97);
+}
+
+/* 占位的大封面图 */
+.article-img {
+  width: 100%;
+  height: 400rpx; /* 足够大，极具视觉冲击力 */
+  background-color: #e8e8e8; /* 图片没加载出来时的占位灰色 */
+}
+
+/* 文字区域 */
+.article-info {
+  padding: 30rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.article-title {
+  font-size: 34rpx;
+  font-weight: 800;
+  color: #000000;
+  margin-bottom: 12rpx;
+}
+
+.article-desc {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.4;
+}
+
+/* 🌙 星空模式下的卡片变身魔法 */
+.night-theme .article-card {
+  background-color: rgba(255, 255, 255, 0.08); /* 半透明磨砂黑 */
+  backdrop-filter: blur(15px);
+  box-shadow: 0 10rpx 30rpx rgba(0, 0, 0, 0.2);
+}
+
+.night-theme .article-img {
+  background-color: #2a3b5c; /* 夜间的占位色变深 */
+}
+
+.night-theme .article-title {
+  color: #ffffff;
+}
+
+.night-theme .article-desc {
+  color: #aaaaaa;
+}
+/* ================= 第 2 页：我的页面 (米家暗黑风) ================= */
+
+/* 强制该页面背景为米家的极暗灰色，并带有顶部的微光渐变 */
+.profile-bg {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, #2a2c36 0%, #17181c 20%, #17181c 100%);
+}
+
 .profile-page {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding-top: 180rpx;
-  align-items: center;
+  padding-top: 140rpx; /* 避开刘海 */
+  box-sizing: border-box;
 }
 
-.profile-header {
+/* --- 1. 顶部用户区 --- */
+.user-header {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  margin-bottom: 60rpx;
+  padding: 0 40rpx;
+  margin-bottom: 50rpx;
 }
 
-.profile-avatar {
-  width: 140rpx;
-  height: 140rpx;
+.user-avatar-box {
+  margin-right: 30rpx;
+}
+
+/* ✂️ 核心魔法：强制裁圆，去白边！ */
+.user-avatar {
+  width: 120rpx;
+  height: 120rpx;
   border-radius: 50%;
-  border: 4rpx solid #ffffff;
-  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
-  margin-bottom: 20rpx;
+  overflow: hidden; /* 任何方形白边都会被无情切掉 */
+  background-color: #333; /* 图片未加载时的底色 */
 }
 
-.profile-nickname {
+.user-info-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.user-nickname {
   font-size: 40rpx;
   font-weight: bold;
-  color: #1a1a1a;
-  margin-bottom: 10rpx;
+  color: #ffffff;
+  margin-bottom: 8rpx;
 }
 
-.profile-id {
+.user-id {
   font-size: 24rpx;
-  color: #999999;
+  color: #888899;
+  margin-bottom: 16rpx;
 }
 
-.profile-menu {
-  width: 100%;
-  padding: 0 40rpx;
-  margin-bottom: 40rpx;
+.user-tags {
+  display: inline-flex;
+  align-items: center;
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 6rpx 20rpx;
+  border-radius: 20rpx;
+  font-size: 22rpx;
+  color: #aaaaaa;
+  align-self: flex-start; /* 让背景块包裹文字，不撑满整行 */
+}
+
+.user-tags .divider {
+  margin: 0 10rpx;
+  color: #555;
+}
+
+/* --- 2. 家庭组卡片 --- */
+.family-card {
+  background-color: #222328;
+  margin: 0 40rpx 30rpx;
+  border-radius: 24rpx;
+  padding: 30rpx;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.family-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.family-name {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 6rpx;
+}
+
+.family-desc {
+  font-size: 24rpx;
+  color: #888899;
+}
+
+.member-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.mini-avatar {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  border: 4rpx solid #222328; /* 用背景色做边框，形成叠放时的缝隙感 */
+  margin-left: -20rpx; /* 核心：负边距产生叠放效果 */
+  background-color: #444;
+}
+.mini-avatar:first-child { margin-left: 0; }
+
+.add-member-btn {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background-color: #33343a;
+  color: #888899;
+  font-size: 36rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-left: -10rpx;
+  border: 4rpx solid #222328;
+  z-index: 9;
+}
+
+/* --- 3. 功能列表卡片 --- */
+.menu-card {
+  background-color: #222328;
+  margin: 0 40rpx 30rpx;
+  border-radius: 24rpx;
+  padding: 10rpx 0; /* 上下留点空隙，左右不留，让边框贯通 */
 }
 
 .menu-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 30rpx 20rpx;
-  font-size: 30rpx;
-  color: #333333;
-  border-bottom: 1rpx solid #f0f0f0;
+  padding: 30rpx 40rpx;
+  transition: background-color 0.2s;
+}
+.menu-item:active {
+  background-color: #2a2c36; /* 点击时的反馈 */
 }
 
-.menu-item .arrow {
+.menu-left {
+  display: flex;
+  align-items: center;
+}
+
+.menu-icon {
   font-size: 36rpx;
-  color: #cccccc;
-}
-
-.logout-section {
-  width: 100%;
-  padding: 0 40rpx;
-}
-
-.logout-btn {
-  width: 100%;
-  padding: 26rpx 0;
+  margin-right: 20rpx;
+  width: 40rpx; /* 固定宽度让后面的文字绝对对齐 */
   text-align: center;
+}
+
+.menu-name {
   font-size: 30rpx;
-  color: #ff3b30;
-  background: rgba(255, 59, 48, 0.06);
-  border-radius: 16rpx;
+  color: #dddddd;
 }
 
-/* ================= 空状态 ================= */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding-top: 120rpx;
+.arrow {
+  font-size: 32rpx;
+  color: #555566;
+  font-weight: 300;
 }
+/* ================= 白天模式下的"我的"页面覆写 ================= */
+.day-profile {
+  background: linear-gradient(to bottom, #e8ecf1 0%, #f5f5f5 20%, #f5f5f5 100%);
+}
+.day-profile .user-nickname { color: #1a1a1a; }
+.day-profile .user-id { color: #888; }
+.day-profile .user-tags { background-color: rgba(0,0,0,0.05); color: #666; }
+.day-profile .user-tags .divider { color: #ccc; }
+.day-profile .family-card { background-color: #ffffff; }
+.day-profile .family-name { color: #1a1a1a; }
+.day-profile .family-desc { color: #888; }
+.day-profile .mini-avatar { border-color: #ffffff; }
+.day-profile .add-member-btn { background-color: #e8e8e8; color: #888; border-color: #ffffff; }
+.day-profile .menu-card { background-color: #ffffff; }
+.day-profile .menu-name { color: #333; }
+.day-profile .menu-item:active { background-color: #f0f0f0; }
+.day-profile .arrow { color: #ccc; }
 
-.empty-icon {
-  font-size: 100rpx;
-  margin-bottom: 30rpx;
-  opacity: 0.5;
-}
-
-.empty-text {
-  font-size: 30rpx;
-  color: #888888;
-  margin-bottom: 12rpx;
-}
-
-.empty-hint {
-  font-size: 24rpx;
-  color: #bbbbbb;
-}
-
-/* ================= 绑定设备弹窗 ================= */
-.bind-modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 999;
-}
-
-.bind-modal {
-  width: 560rpx;
-  background: #ffffff;
-  border-radius: 24rpx;
-  padding: 40rpx;
-  display: flex;
-  flex-direction: column;
-}
-
-.bind-modal-title {
-  font-size: 34rpx;
-  font-weight: bold;
-  color: #1a1a1a;
-  text-align: center;
-  margin-bottom: 10rpx;
-}
-
-.bind-modal-device {
-  font-size: 24rpx;
-  color: #999999;
-  text-align: center;
-  margin-bottom: 30rpx;
-}
-
-.bind-input {
-  width: 100%;
-  height: 80rpx;
-  background: #f5f5f5;
-  border-radius: 12rpx;
-  padding: 0 20rpx;
-  font-size: 28rpx;
-  margin-bottom: 16rpx;
-  box-sizing: border-box;
-}
-
-.bind-modal-btns {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 10rpx;
-}
-
-.bind-btn {
-  width: 220rpx;
-  height: 80rpx;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  border-radius: 40rpx;
-  font-size: 28rpx;
-  font-weight: 500;
-}
-
-.bind-btn.cancel {
-  background: #f5f5f5;
-  color: #666666;
-}
-
-.bind-btn.confirm {
-  background: #07c160;
-  color: #ffffff;
-}
+/* ================= 底部弹窗样式 ================= */
+.popup-mask { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 9998; }
+.popup-panel { position: fixed; bottom: 0; left: 0; right: 0; background-color: #1c1c1e; border-radius: 40rpx 40rpx 0 0; padding: 50rpx 40rpx 80rpx; z-index: 9999; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.popup-panel.show { transform: translateY(0); }
+.popup-title { color: #fff; font-size: 36rpx; font-weight: bold; text-align: center; margin-bottom: 50rpx; }
+.role-item { background-color: #2c2c2e; border-radius: 24rpx; padding: 40rpx; margin-bottom: 30rpx; display: flex; justify-content: space-between; align-items: center; border: 4rpx solid transparent; transition: all 0.2s; }
+.role-item.active { background-color: rgba(7, 193, 96, 0.1); border-color: #07c160; }
+.role-info { flex: 1; }
+.role-name { color: #fff; font-size: 34rpx; font-weight: bold; margin-bottom: 12rpx; transition: color 0.2s; }
+.role-item.active .role-name { color: #07c160; }
+.role-desc { color: #888; font-size: 26rpx; line-height: 1.4; }
+.check-icon { color: #07c160; font-size: 40rpx; font-weight: bold; margin-left: 20rpx; }
+.popup-btn-group { display: flex; justify-content: space-between; margin-top: 50rpx; }
+.popup-btn { flex: 1; text-align: center; padding: 30rpx 0; border-radius: 20rpx; font-size: 32rpx; font-weight: bold; }
+.popup-btn.cancel { background-color: #333; color: #fff; margin-right: 30rpx; }
+.popup-btn.confirm { background-color: #07c160; color: #fff; }

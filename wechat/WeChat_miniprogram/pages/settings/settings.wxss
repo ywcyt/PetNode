@@ -1,0 +1,21 @@
+/* pages/settings/settings.wxss */
+.settings-page { width: 100vw; height: 100vh; background-color: #f5f5f5; transition: background-color 0.3s; }
+.section-title { padding: 30rpx 40rpx 10rpx; font-size: 26rpx; color: #888; }
+.group { background-color: #fff; margin: 0 30rpx; border-radius: 20rpx; overflow: hidden; transition: background-color 0.3s; }
+.cell { display: flex; justify-content: space-between; align-items: center; padding: 30rpx 40rpx; border-bottom: 1rpx solid #f0f0f0; font-size: 32rpx; color: #333; }
+.cell:last-child { border-bottom: none; }
+.cell:active { background-color: #f9f9f9; }
+.arrow { color: #ccc; font-size: 36rpx; margin-left: 10rpx; }
+.value-text { color: #888; font-size: 28rpx; display: flex; align-items: center; }
+
+.logout-btn { margin: 60rpx 30rpx; background-color: #fff; color: #ff3b30; font-size: 32rpx; font-weight: bold; padding: 30rpx 0; text-align: center; border-radius: 20rpx; }
+.logout-btn:active { background-color: #f9f9f9; }
+
+/* 深色模式覆写 */
+.dark-theme { background-color: #000000; }
+.dark-theme .section-title { color: #666; }
+.dark-theme .group { background-color: #1c1c1e; }
+.dark-theme .cell { color: #fff; border-bottom-color: #333; }
+.dark-theme .cell:active { background-color: #2c2c2e; }
+.dark-theme .logout-btn { background-color: #1c1c1e; }
+.dark-theme .logout-btn:active { background-color: #2c2c2e; }

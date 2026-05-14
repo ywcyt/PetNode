@@ -1,0 +1,5 @@
+<view class="joke-container">
+  <!-- 🚨 修复点：用 &lt; 完美替代 < ，编译器就不会眼花了 -->
+  <view class="back-btn" bindtap="goBack">&lt; 返回上一页</view>
+  <text class="joke-text">{{text}}</text>
+</view>

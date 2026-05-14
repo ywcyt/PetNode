@@ -155,7 +155,7 @@ class SmartCollar:
         self.tick_interval = tick_interval
 
         # 时钟：模拟时间从 start_time 开始，每次 generate_one_record() 前进 tick_interval
-        self.sim_time = start_time or datetime(2025, 6, 1, 0, 0, 0)
+        self.sim_time = start_time or datetime.now()
         self._current_day = self.sim_time.date()
 
         # 行为状态：初始为 sleeping（凌晨开始）

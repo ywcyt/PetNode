@@ -1,0 +1,10 @@
+<view class="consumables-page">
+   <!-- ✨ 植入米家风头部 -->
+   <view class="mi-nav-header" style="width: 100%; position: absolute; top: 0; left: 0;">
+     <view class="mi-back-btn" bindtap="goBack">←</view>
+     <view class="mi-nav-title">设备耗材</view>
+   </view>
+
+   <image class="consumables-img" src="/images/consumables_icon.png" mode="aspectFit"></image>
+   <view class="text">暂无耗材</view>
+</view>

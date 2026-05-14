@@ -5,16 +5,26 @@
   background-color: #000000;
 }
 
-/* ================= 悬浮返回按钮 ================= */
+/* ================= 顶部工具栏 ================= */
+.top-bar {
+  position: fixed;
+  top: 90rpx;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 30rpx;
+}
+
+/* ================= 返回按钮 ================= */
 .custom-back-btn {
-  position: fixed; /* 固定在左上角，不随页面滑动而消失 */
-  top: 100rpx; /* 避开手机顶部的刘海/状态栏 */
-  left: 30rpx;
   width: 72rpx;
   height: 72rpx;
-  background-color: rgba(0, 0, 0, 0.5); /* 半透明黑色底 */
-  backdrop-filter: blur(10px); /* 毛玻璃效果 */
-  border-radius: 50%; /* 圆形按钮 */
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  border-radius: 50%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -29,6 +39,31 @@
   border-left: 4rpx solid #ffffff;
   transform: rotate(-45deg);
   margin-left: 8rpx; /* 微调居中 */
+}
+
+/* ================= 编辑按钮 ================= */
+.edit-btn {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  color: #fff;
+  font-size: 26rpx;
+  padding: 16rpx 28rpx;
+  border-radius: 36rpx;
+}
+
+/* ================= 更新时间标签 ================= */
+.update-time {
+  position: fixed;
+  top: 180rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 22rpx;
+  padding: 10rpx 24rpx;
+  border-radius: 20rpx;
 }
 
 /* ================= 地图区域 ================= */

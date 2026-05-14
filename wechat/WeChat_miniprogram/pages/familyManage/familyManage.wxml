@@ -1,0 +1,19 @@
+<view class="page-bg">
+  <!-- ✨ 植入米家风头部 -->
+  <view class="mi-nav-header">
+    <view class="mi-back-btn" bindtap="goBack">←</view>
+    <view class="mi-nav-title">家庭成员管理</view>
+  </view>
+
+  <!-- 下面是你原本的循环名片代码，保持原样即可 -->
+  <view class="member-card" wx:for="{{members}}" wx:key="id">
+    <view class="member-left">
+      <image class="avatar" src="{{item.avatar}}" mode="aspectFill"></image>
+      <view class="info">
+        <view class="name">{{item.name}} <text class="tag" wx:if="{{item.isMe}}">我自己</text></view>
+        <view class="phone">{{item.phone}}</view>
+      </view>
+    </view>
+    <view class="kick-btn" wx:if="{{!item.isMe}}" data-id="{{item.id}}" data-name="{{item.name}}" bindtap="kickMember">踢出此成员</view>
+  </view>
+</view>

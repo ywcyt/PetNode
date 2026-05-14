@@ -1,0 +1,4 @@
+.joke-container { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; background: #f8f8f8; padding: 40rpx; position: relative; }
+.joke-text { font-size: 36rpx; color: #888; text-align: center; line-height: 1.5; font-weight: bold; }
+/* 返回按钮固定在左上角 */
+.back-btn { position: absolute; top: 120rpx; left: 40rpx; font-size: 32rpx; color: #07c160; font-weight: bold; padding: 20rpx; z-index: 99; }

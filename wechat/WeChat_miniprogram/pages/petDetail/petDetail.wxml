@@ -1,53 +1,111 @@
-<scroll-view class="detail-container" scroll-y="true">
-  
-  <view class="custom-back-btn" bindtap="goBack">
-    <view class="back-arrow"></view>
+<scroll-view class="detail-container" scroll-y="true" refresher-enabled="{{true}}" refresher-triggered="{{isRefreshing}}" bindrefresherrefresh="onRefresh">
+
+  <view class="top-bar">
+    <view class="custom-back-btn" bindtap="goBack">
+      <view class="back-arrow"></view>
+    </view>
+    <view class="edit-btn" bindtap="showEditDialog">✏️ 编辑</view>
   </view>
 
+  <view class="update-time" wx:if="{{lastFetchTime}}">数据更新时间：{{lastFetchTime}}  <text style="color:#07c160;">● 实时</text></view>
+
   <view class="map-section">
-    <map 
-      class="realtime-map" 
-      longitude="{{longitude}}" 
-      latitude="{{latitude}}" 
-      scale="15" 
+    <map
+      class="realtime-map"
+      longitude="{{longitude}}"
+      latitude="{{latitude}}"
+      scale="15"
       markers="{{markers}}"
       show-location>
     </map>
   </view>
 
   <view class="health-section">
-    
-    <view class="chart-card" wx:for="{{healthCharts}}" wx:key="id">
-      
-      <view class="card-header">
-        <text class="chart-title">{{item.title}}</text>
-        <view class="average-data">
-          <text class="avg-number">{{item.average}}</text>
-          <text class="avg-unit">{{item.unit}}</text>
-        </view>
-        <text class="date-range">{{item.dateRange || '---'}}</text>
-      </view>
 
+    <!-- 心跳 -->
+    <view class="chart-card">
+      <view class="card-header">
+        <text class="chart-title">心跳</text>
+        <view class="average-data">
+          <text class="avg-number">{{hrAvg}}</text>
+          <text class="avg-unit">BPM</text>
+        </view>
+        <text class="date-range">最近 7 次采样</text>
+      </view>
       <view class="css-chart-box">
-        <view class="bar-wrapper" wx:for="{{item.dataPoints}}" wx:for-item="point" wx:key="*this">
-          <view class="bar" style="height:{{point}}%;background-color:{{item.color}};"></view>
+        <view class="bar-wrapper" wx:for="{{hrDp}}" wx:for-item="p" wx:key="id">
+          <view class="bar" style="height:{{p.val}}%;background-color:#ff3b30;"></view>
         </view>
         <view class="x-axis">
-          <text>五</text><text>六</text><text>日</text><text>一</text><text>二</text><text>三</text><text>四</text>
+          <text>1</text><text>2</text><text>3</text><text>4</text><text>5</text><text>6</text><text>7</text>
         </view>
       </view>
-
-      <view class="summary-box {{item.isExpanded ? 'expanded' : ''}}" bindtap="toggleSummary" data-index="{{index}}">
+      <view class="summary-box {{hrExpanded ? 'expanded' : ''}}" bindtap="toggleSummary" data-index="0">
         <view class="summary-header">
-          <text class="summary-icon" style="color: {{item.color}}">●</text>
+          <text class="summary-icon" style="color:#ff3b30">●</text>
           <text class="summary-label">提要</text>
-          <text class="toggle-btn">{{item.isExpanded ? '收起' : '全部显示'}}</text>
+          <text class="toggle-btn">{{hrExpanded ? '收起' : '全部显示'}}</text>
         </view>
-        <text class="summary-content">{{item.summary}}</text>
+        <text class="summary-content">{{hrSummary}}</text>
       </view>
-
     </view>
-    
+
+    <!-- 呼吸 -->
+    <view class="chart-card">
+      <view class="card-header">
+        <text class="chart-title">呼吸</text>
+        <view class="average-data">
+          <text class="avg-number">{{respAvg}}</text>
+          <text class="avg-unit">次/分</text>
+        </view>
+        <text class="date-range">最近 7 次采样</text>
+      </view>
+      <view class="css-chart-box">
+        <view class="bar-wrapper" wx:for="{{respDp}}" wx:for-item="p" wx:key="id">
+          <view class="bar" style="height:{{p.val}}%;background-color:#34c759;"></view>
+        </view>
+        <view class="x-axis">
+          <text>1</text><text>2</text><text>3</text><text>4</text><text>5</text><text>6</text><text>7</text>
+        </view>
+      </view>
+      <view class="summary-box {{respExpanded ? 'expanded' : ''}}" bindtap="toggleSummary" data-index="1">
+        <view class="summary-header">
+          <text class="summary-icon" style="color:#34c759">●</text>
+          <text class="summary-label">提要</text>
+          <text class="toggle-btn">{{respExpanded ? '收起' : '全部显示'}}</text>
+        </view>
+        <text class="summary-content">{{respSummary}}</text>
+      </view>
+    </view>
+
+    <!-- 体温 -->
+    <view class="chart-card">
+      <view class="card-header">
+        <text class="chart-title">体温</text>
+        <view class="average-data">
+          <text class="avg-number">{{tempAvg}}</text>
+          <text class="avg-unit">°C</text>
+        </view>
+        <text class="date-range">最近 7 次采样</text>
+      </view>
+      <view class="css-chart-box">
+        <view class="bar-wrapper" wx:for="{{tempDp}}" wx:for-item="p" wx:key="id">
+          <view class="bar" style="height:{{p.val}}%;background-color:#ff9500;"></view>
+        </view>
+        <view class="x-axis">
+          <text>1</text><text>2</text><text>3</text><text>4</text><text>5</text><text>6</text><text>7</text>
+        </view>
+      </view>
+      <view class="summary-box {{tempExpanded ? 'expanded' : ''}}" bindtap="toggleSummary" data-index="2">
+        <view class="summary-header">
+          <text class="summary-icon" style="color:#ff9500">●</text>
+          <text class="summary-label">提要</text>
+          <text class="toggle-btn">{{tempExpanded ? '收起' : '全部显示'}}</text>
+        </view>
+        <text class="summary-content">{{tempSummary}}</text>
+      </view>
+    </view>
+
     <view style="height: 100rpx;"></view>
   </view>
 
