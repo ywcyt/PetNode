@@ -45,7 +45,7 @@ Page({
         charts.push(this.buildChart('heart_rate', '心跳', 'BPM', '#ff3b30', heartSeries.points, 'value_bpm'));
       }
       if (respSeries && respSeries.points && respSeries.points.length > 0) {
-        charts.push(this.buildChart('respiration', '呼吸', '次/分', '#34c759', respSeries.points, 'value'));
+        charts.push(this.buildChart('respiration', '呼吸', '次/分', '#34c759', respSeries.points, 'value_bpm'));
       }
       if (tempSeries && tempSeries.points && tempSeries.points.length > 0) {
         charts.push(this.buildChart('temperature', '体温', '°C', '#ff9500', tempSeries.points, 'value_celsius'));

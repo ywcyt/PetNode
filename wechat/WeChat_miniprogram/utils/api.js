@@ -13,14 +13,20 @@ const request = (url, method = 'GET', data = {}) => {
       },
       success: (res) => {
         if (res.statusCode === 200 || res.statusCode === 201) {
-          resolve(res.data);
+          const body = res.data;
+          if (body.code === 0) {
+            resolve(body.data);
+          } else {
+            wx.showToast({ title: body.message || '请求失败', icon: 'error' });
+            reject(body);
+          }
         } else if (res.statusCode === 401) {
           wx.showToast({ title: '登录已过期', icon: 'none' });
           wx.removeStorageSync('access_token');
           wx.reLaunch({ url: '/pages/login/login' });
           reject('Unauthorized');
         } else {
-          wx.showToast({ title: res.data.message || '请求失败', icon: 'error' });
+          wx.showToast({ title: (res.data && res.data.message) || '请求失败', icon: 'error' });
           reject(res.data);
         }
       },
