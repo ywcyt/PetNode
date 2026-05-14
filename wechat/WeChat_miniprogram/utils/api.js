@@ -1,21 +1,22 @@
-const BASE_URL = 'http://127.0.0.1:5000/api/v1'; 
+const BASE_URL = 'http://127.0.0.1:5000/api/v1';
 
 const request = (url, method = 'GET', data = {}) => {
   return new Promise((resolve, reject) => {
-    const token = wx.getStorageSync('access_token'); 
+    const token = wx.getStorageSync('access_token');
     wx.request({
       url: BASE_URL + url,
       method: method,
       data: data,
       header: {
         'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : '' 
+        'Authorization': token ? `Bearer ${token}` : ''
       },
       success: (res) => {
         if (res.statusCode === 200 || res.statusCode === 201) {
           resolve(res.data);
         } else if (res.statusCode === 401) {
           wx.showToast({ title: '登录已过期', icon: 'none' });
+          wx.removeStorageSync('access_token');
           wx.reLaunch({ url: '/pages/login/login' });
           reject('Unauthorized');
         } else {
@@ -31,21 +32,111 @@ const request = (url, method = 'GET', data = {}) => {
   });
 };
 
-// utils/api.js 里的临时修改
+const qs = (params) => {
+  if (!params) return '';
+  const keys = Object.keys(params).filter(k => params[k] !== undefined && params[k] !== null);
+  if (keys.length === 0) return '';
+  return '?' + keys.map(k => `${k}=${encodeURIComponent(params[k])}`).join('&');
+};
+
 module.exports = {
-  wxLoginAndAuth: (code) => {
-    // 暂时不发网络请求，直接假装服务器返回了
-    return new Promise((resolve) => {
-      console.log("正在使用 Mock 数据登录...");
-      resolve({
-        is_bound: false, // 假装是新用户，先看看能不能跳到绑定页
-        wx_identity_token: 'mock_token_123456'
-      });
-    });
+  // ===== 微信认证 =====
+  wxLoginAndAuth(code) {
+    return request('/wechat/auth', 'POST', { code });
   },
-  fetchCurrentUser: () => {
-    return new Promise((resolve) => {
-      resolve({ nickname: '测试用户', user_id: 1 });
-    });
+
+  bindWechatUser(data) {
+    return request('/wechat/bind', 'POST', data);
+  },
+
+  unbindWechat() {
+    return request('/wechat/unbind', 'POST');
+  },
+
+  // ===== 用户信息 =====
+  fetchCurrentUser() {
+    return request('/me');
+  },
+
+  updateProfile(data) {
+    return request('/me', 'PUT', data);
+  },
+
+  // ===== 设备管理 =====
+  bindDevice(data) {
+    return request('/devices/bind', 'POST', data);
+  },
+
+  unbindDevice(deviceId) {
+    return request(`/devices/${deviceId}/unbind`, 'POST');
+  },
+
+  // ===== 宠物列表与详情 =====
+  fetchPets() {
+    return request('/pets');
+  },
+
+  fetchPetSummary(petId) {
+    return request(`/pets/${petId}/summary`);
+  },
+
+  updatePet(petId, data) {
+    return request(`/pets/${petId}`, 'PUT', data);
+  },
+
+  // ===== 健康数据 =====
+  fetchRespirationLatest(petId) {
+    return request(`/pets/${petId}/respiration/latest`);
+  },
+
+  fetchRespirationSeries(petId, params = {}) {
+    return request(`/pets/${petId}/respiration/series${qs(params)}`);
+  },
+
+  fetchHeartRateLatest(petId) {
+    return request(`/pets/${petId}/heart-rate/latest`);
+  },
+
+  fetchHeartRateSeries(petId, params = {}) {
+    return request(`/pets/${petId}/heart-rate/series${qs(params)}`);
+  },
+
+  fetchTemperatureSeries(petId, params = {}) {
+    return request(`/pets/${petId}/temperature/series${qs(params)}`);
+  },
+
+  // ===== 定位 =====
+  fetchPetLocation(petId) {
+    return request(`/pets/${petId}/location/latest`);
+  },
+
+  // ===== 事件/告警 =====
+  fetchPetEvents(petId, params = {}) {
+    return request(`/pets/${petId}/events${qs(params)}`);
+  },
+
+  markEventRead(petId, eventId) {
+    return request(`/pets/${petId}/events/${eventId}/read`, 'PUT');
+  },
+
+  // ===== 家庭组 =====
+  createFamily() {
+    return request('/family', 'POST');
+  },
+
+  inviteFamily(expiresIn) {
+    return request('/family/invite', 'POST', { expires_in: expiresIn });
+  },
+
+  joinFamily(inviteToken) {
+    return request('/family/join', 'POST', { invite_token: inviteToken });
+  },
+
+  fetchFamilyMembers() {
+    return request('/family/members');
+  },
+
+  removeFamilyMember(userId) {
+    return request(`/family/members/${userId}`, 'DELETE');
   }
 };

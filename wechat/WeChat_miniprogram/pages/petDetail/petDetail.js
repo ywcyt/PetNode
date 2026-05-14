@@ -1,131 +1,165 @@
+const API = require('../../utils/api.js');
+
 Page({
   data: {
     petId: null,
-    // 地图中心点坐标 (假设在某个公园)
-    latitude: 29.5630, // 重庆的纬度
-    longitude: 106.4600, // 重庆的经度
-    // 地图上的狗子标记点
+    latitude: 29.5630,
+    longitude: 106.4600,
     markers: [],
-    
-    // 健康图表配置数据
-    healthCharts: [
-      {
-        id: 'steps',
-        title: '步数',
-        unit: '步',
-        average: '8,925',
-        color: '#007aff', // 蓝色
-        // 模拟过去7天的数据高度比例 (0-100%)
-        dataPoints: [60, 30, 50, 20, 45, 65, 5], 
-        summary: '今年你一天走的步数与 2025 年大致相同。狗狗整体运动量达标，周三达到了运动峰值，建议周末增加户外互动时间。',
-        isExpanded: false // 摘要是否展开的开关
-      },
-      {
-        id: 'heart_rate',
-        title: '心跳',
-        unit: 'BPM',
-        average: '95',
-        color: '#ff3b30', // 红色
-        dataPoints: [40, 45, 50, 42, 60, 48, 45],
-        summary: '心率均值在正常范围内（70-120 BPM）。周二下午有短暂的心率升高，可能与激烈的追逐游戏有关，属于正常生理波动。',
-        isExpanded: false
-      },
-      {
-        id: 'respiration',
-        title: '呼吸',
-        unit: '次/分',
-        average: '22',
-        color: '#34c759', // 浅绿色
-        dataPoints: [30, 28, 35, 30, 32, 29, 30],
-        summary: '静息呼吸频率稳定。未检测到异常的急促呼吸，睡眠期间的呼吸曲线非常平滑，显示出极佳的睡眠质量。',
-        isExpanded: false
-      },
-      {
-        id: 'temperature',
-        title: '体温',
-        unit: '°C',
-        average: '38.5',
-        color: '#ff9500', // 橙色
-        dataPoints: [50, 52, 48, 50, 51, 50, 49],
-        summary: '体温保持在犬类正常的 38°C - 39°C 之间。未出现发热或体温过低现象，项圈温度传感器工作正常。',
-        isExpanded: false
-      }
-    ]
+    healthCharts: [],
+    loading: true
   },
 
-  onLoad(options) {
-    // 1. 获取从首页传过来的狗子 ID
-    const currentId = options.id || 1;
-    this.setData({ petId: currentId });
+  async onLoad(options) {
+    const petId = options.id;
+    if (!petId) {
+      wx.showToast({ title: '参数错误', icon: 'error' });
+      return;
+    }
+    this.setData({ petId: petId });
+    await this.loadAllData(petId);
+  },
 
-    // 2. 调用微信原生 API 获取用户手机的真实位置
+  async loadAllData(petId) {
+    this.setData({ loading: true });
+    try {
+      const [location, heartSeries, respSeries, tempSeries] = await Promise.all([
+        API.fetchPetLocation(petId).catch(() => null),
+        API.fetchHeartRateSeries(petId).catch(() => null),
+        API.fetchRespirationSeries(petId).catch(() => null),
+        API.fetchTemperatureSeries(petId).catch(() => null)
+      ]);
+
+      if (location) {
+        this.setData({
+          latitude: location.lat || this.data.latitude,
+          longitude: location.lng || this.data.longitude
+        });
+        this.setupMapMarker(petId, location.lat || this.data.latitude, location.lng || this.data.longitude);
+      } else {
+        this.tryGetPhoneLocation(petId);
+      }
+
+      const charts = [];
+      if (heartSeries && heartSeries.points && heartSeries.points.length > 0) {
+        charts.push(this.buildChart('heart_rate', '心跳', 'BPM', '#ff3b30', heartSeries.points, 'value_bpm'));
+      }
+      if (respSeries && respSeries.points && respSeries.points.length > 0) {
+        charts.push(this.buildChart('respiration', '呼吸', '次/分', '#34c759', respSeries.points, 'value'));
+      }
+      if (tempSeries && tempSeries.points && tempSeries.points.length > 0) {
+        charts.push(this.buildChart('temperature', '体温', '°C', '#ff9500', tempSeries.points, 'value_celsius'));
+      }
+
+      // 如果没有实时数据，显示空状态
+      if (charts.length === 0) {
+        charts.push({
+          id: 'nodata',
+          title: '暂无数据',
+          unit: '',
+          average: '--',
+          color: '#999999',
+          dataPoints: [10, 10, 10, 10, 10, 10, 10],
+          summary: '设备尚未上报健康数据，请确认项圈已佩戴并处于正常工作状态。',
+          isExpanded: false
+        });
+      }
+
+      this.setData({ healthCharts: charts });
+    } catch (err) {
+      console.error('加载健康数据失败:', err);
+    } finally {
+      this.setData({ loading: false });
+    }
+  },
+
+  buildChart(id, title, unit, color, points, valueKey) {
+    const sorted = points.slice().sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+    const values = sorted.map(p => p[valueKey] || 0);
+    const daily = this.toDailyBuckets(sorted, valueKey, 7);
+
+    const maxVal = Math.max(...daily, 1);
+    const dataPoints = daily.map(v => Math.max(5, Math.round((v / maxVal) * 100)));
+
+    const avg = (daily.reduce((s, v) => s + v, 0) / daily.length).toFixed(1);
+
+    let dateRange = '';
+    if (sorted.length > 0 && sorted[0].ts) {
+      const first = sorted[0].ts.slice(0, 10);
+      const last = sorted[sorted.length - 1].ts.slice(0, 10);
+      dateRange = first === last ? first : `${first} - ${last}`;
+    }
+
+    return {
+      id, title, unit, color,
+      average: avg,
+      dataPoints,
+      summary: `近${daily.length}天平均${avg} ${unit}，最高${maxVal.toFixed(1)} ${unit}。`,
+      dateRange,
+      isExpanded: false
+    };
+  },
+
+  toDailyBuckets(sortedPoints, valueKey, maxDays) {
+    const buckets = {};
+    sortedPoints.forEach(p => {
+      const day = (p.ts || '').slice(0, 10);
+      if (!buckets[day]) buckets[day] = [];
+      buckets[day].push(p[valueKey] || 0);
+    });
+    const days = Object.keys(buckets).sort();
+    const recent = days.slice(-maxDays);
+    return recent.map(day => {
+      const vals = buckets[day];
+      return vals.reduce((s, v) => s + v, 0) / vals.length;
+    });
+  },
+
+  setupMapMarker(petId, lat, lng) {
+    const markers = [{
+      id: parseInt(petId) || 1,
+      latitude: lat,
+      longitude: lng,
+      iconPath: '/images/DefaultAvatar.png',
+      width: 50,
+      height: 50,
+      callout: {
+        content: ' 当前位置',
+        color: '#ffffff',
+        bgColor: '#07c160',
+        padding: 5,
+        borderRadius: 5,
+        display: 'ALWAYS'
+      }
+    }];
+    this.setData({ markers });
+  },
+
+  tryGetPhoneLocation(petId) {
     wx.getLocation({
-      type: 'gcj02', // 国测局坐标系，微信地图原生的坐标标准
+      type: 'gcj02',
       success: (res) => {
-        // 成功获取真实位置后，更新地图中心点
         this.setData({
           latitude: res.latitude,
           longitude: res.longitude
         });
-        // 围绕用户的真实位置，生成狗子的坐标
-        this.initMockMapData(currentId, res.latitude, res.longitude);
+        this.setupMapMarker(petId, res.latitude, res.longitude);
       },
-      fail: (err) => {
-        console.error("获取位置失败，用户可能拒绝了授权", err);
-        // 兜底方案：如果用户拒绝给位置权限，就还是用默认的坐标
-        this.initMockMapData(currentId, this.data.latitude, this.data.longitude);
+      fail: () => {
+        this.setupMapMarker(petId, this.data.latitude, this.data.longitude);
       }
     });
   },
 
-  /**
-   * 初始化地图标记点数据 (围绕真实坐标 baseLat, baseLng 散布)
-   */
-  initMockMapData(currentId, baseLat, baseLng) {
-    // 为了模拟真实感，我们在用户真实经纬度上做微小的加减运算（大概偏差几百米）
-    const mockMarkers = [
-      { id: 1, latitude: baseLat + 0.002, longitude: baseLng + 0.001, iconPath: '/images/DefaultAvatar.png', width: 40, height: 40 },
-      { id: 2, latitude: baseLat - 0.003, longitude: baseLng + 0.002, iconPath: '/images/DefaultAvatar.png', width: 30, height: 30, alpha: 0.5 },
-      { id: 3, latitude: baseLat + 0.001, longitude: baseLng - 0.003, iconPath: '/images/DefaultAvatar.png', width: 30, height: 30, alpha: 0.5 },
-    ];
-    
-    // 找出当前选中的那只狗，高亮它并加上文字气泡
-    const markers = mockMarkers.map(m => {
-      if (m.id == currentId) {
-        m.width = 50;
-        m.height = 50;
-        m.alpha = 1;
-        m.callout = { 
-          content: ' 当前狗狗', 
-          color: '#ffffff', 
-          bgColor: '#07c160', 
-          padding: 5, 
-          borderRadius: 5, 
-          display: 'ALWAYS' 
-        };
-      }
-      return m;
-    });
-
-    this.setData({ markers });
-  },
-  /**
-   * 点击切换摘要的折叠/展开状态
-   */
   toggleSummary(e) {
+    const index = e.currentTarget.dataset.index;
     const key = `healthCharts[${index}].isExpanded`;
     this.setData({
       [key]: !this.data.healthCharts[index].isExpanded
     });
-  }, // <--- ⚠️ 核心点1：这里必须有一个逗号，把两个函数隔开！
+  },
 
-  /**
-   * 点击左上角返回上一页
-   */
   goBack() {
-    wx.navigateBack({
-      delta: 1 // 返回上一级页面
-    });
+    wx.navigateBack({ delta: 1 });
   }
-
-}) // <--- ⚠️ 核心点2：整个 Page 的大括号在这里才真正闭合！
+});
