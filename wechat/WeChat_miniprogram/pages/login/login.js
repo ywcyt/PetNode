@@ -3,9 +3,7 @@ const app = getApp();
 
 Page({
   data: {
-    isLoading: false,
-    isNewUser: false,
-    wxIdentityToken: ''
+    isLoading: false
   },
 
   async handleWechatLogin() {
@@ -26,9 +24,8 @@ Page({
         wx.showToast({ title: '登录成功', icon: 'success' });
         setTimeout(() => { wx.switchTab({ url: '/pages/index/index' }); }, 800);
       } else {
-        wx.setStorageSync('access_token', authRes.wx_identity_token);
-        app.globalData.token = authRes.wx_identity_token;
-        this.autoBindNewUser();
+        // 新用户：直接调 bind 创建账号，不带旧 Authorization
+        await this.autoBindNewUser(authRes.wx_identity_token);
       }
     } catch (err) {
       console.error('登录失败:', err);
@@ -39,10 +36,11 @@ Page({
     }
   },
 
-  async autoBindNewUser() {
+  async autoBindNewUser(wxIdentityToken) {
     try {
       wx.showLoading({ title: '正在注册...' });
-      const bindRes = await API.bindWechatUser({ nickname: '微信用户' });
+      // 新用户注册：只传 wx_identity_token，不带 Authorization header
+      const bindRes = await API.bindWechatUser({ wx_identity_token: wxIdentityToken });
       wx.setStorageSync('access_token', bindRes.access_token);
       app.globalData.token = bindRes.access_token;
       await app.loadUserInfo();

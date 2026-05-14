@@ -46,7 +46,7 @@ Page({
     try {
       const res = await API.fetchPets();
       const devices = (res.pets || []).map(pet => ({
-        id: pet.pet_id,
+        id: pet.device_id,
         name: pet.pet_name || '未命名',
         status: pet.breed || '查看详情',
         avatar: pet.avatar_url || '🐕',
