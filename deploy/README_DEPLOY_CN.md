@@ -17,6 +17,11 @@ docker compose up -d
 部署到服务器时，建议放置到：
 - `/etc/nginx/conf.d/pppetnode.com.conf`
 
+先申请 TLS 证书（示例：Certbot）：
+```bash
+certbot --nginx -d pppetnode.com -d www.pppetnode.com
+```
+
 校验并重载 Nginx：
 ```bash
 nginx -t && systemctl reload nginx
@@ -40,8 +45,9 @@ nginx -t && systemctl reload nginx
 
 说明：
 - `API_KEY` 与 `HMAC_KEY` 在 `flask-server`、`mq-worker`、`engine` 三处必须保持一致。
-- `MYSQL_DEFAULT_PASSWORD_HASH` 需填写你希望设置的默认密码对应的 SHA-256 十六进制哈希值。
+- `MYSQL_DEFAULT_PASSWORD_HASH` 需填写你希望设置的默认密码对应的 SHA-256 十六进制哈希值（与当前项目字段格式保持一致）。
 - 示例生成命令：`echo -n 'your_password' | sha256sum | awk '{print $1}'`
+- `WECHAT_APP_ID` / `WECHAT_APP_SECRET` 可在微信小程序管理后台（开发设置）获取。
 
 ## 5) 基础连通性验证
 ```bash
