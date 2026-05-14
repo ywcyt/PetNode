@@ -46,4 +46,5 @@ nginx -t && systemctl reload nginx
 ```bash
 curl https://pppetnode.com/api/health
 ```
+说明：健康检查接口是 `/api/health`（非 `/api/v1/health`）。  
 如返回健康状态（HTTP 200）即说明 Nginx -> Flask 转发链路可用。
