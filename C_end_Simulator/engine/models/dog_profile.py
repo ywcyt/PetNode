@@ -25,7 +25,6 @@ class DogProfile:
 
     每只狗在创建时确定如下信息：
       - dog_id       : 唯一标识符（默认取 uuid4 前 12 位十六进制字符）
-      - user_id      : 所属用户标识（一个用户可拥有多条狗）
       - breed_size   : 体型大小（small / medium / large）
       - age_stage    : 年龄阶段（puppy / adult / senior）
       - traits       : 慢性体质特质列表（0~2 个，来自 CardiacRisk / RespiratoryRisk / OrthoRisk）

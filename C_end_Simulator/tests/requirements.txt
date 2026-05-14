@@ -3,3 +3,6 @@
 # numpy:  测试中需要创建 SmartCollar/DogProfile 等对象，这些对象依赖 numpy
 pytest>=7,<9
 numpy>=1.24,<3
+mongomock>=4.1,<5.0           # MongoDB 内存模拟（vx API 测试用）
+PyJWT>=2.8,<3.0               # vx API 测试所需
+requests>=2.31,<3.0           # vx API 测试所需（wechat mock 模式无需真实调用）

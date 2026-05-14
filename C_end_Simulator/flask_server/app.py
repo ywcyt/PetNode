@@ -69,23 +69,15 @@ from datetime import datetime  # 获取当前时间（用于日志）
 
 from flask import Flask, request, jsonify  # Flask 核心：应用、请求对象、JSON 响应
 
-# 存储层采用策略模式：app.py 只依赖 BaseStorage.save()/close()。
-#
-# 本周任务：默认改为 MongoDB（MongoStorage）。
-# 兼容性：仍保留 FileStorage 作为降级/本地无 Mongo 环境的选项。
-#
-# 通过环境变量 STORAGE_BACKEND 控制：
-#   - STORAGE_BACKEND=mongo  (默认) → MongoStorage
-#   - STORAGE_BACKEND=file            → FileStorage
 
 # Robust import: prefer absolute package import (helps static analysis and tools),
 # fall back to relative import when running the module as a script.
 try:
-    from flask_server.storage.file_storage import FileStorage
     from flask_server.storage.mongo_storage import MongoStorage
+    from flask_server.storage.mysql_storage import MySQLStorage
 except Exception:
-    from .storage.file_storage import FileStorage
     from .storage.mongo_storage import MongoStorage
+    from .storage.mysql_storage import MySQLStorage
 
 # ────────────────── 日志配置 ──────────────────
 
@@ -104,33 +96,169 @@ logger = logging.getLogger("flask_server")
 # 创建 Flask 应用实例（__name__ 让 Flask 知道当前模块的位置）
 app = Flask(__name__)
 
-# ────────────────── 初始化存储层 ──────────────────
+# ────────────────── 初始化存储层（懒加载，避免启动时 DB 不可达导致崩溃）──────────────────
 
-# ── 存储后端选择 ──
-# 默认使用 MongoDB；如果你在本地没有启动 MongoDB，可以临时：
-#   set STORAGE_BACKEND=file
-_STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "mongo").strip().lower()
+# MongoDB 负责全量实时数据；MySQL 负责静态档案与异常信息。
 
-# FileStorage 的数据目录（仅在 STORAGE_BACKEND=file 时使用）
-_DATA_DIR = os.environ.get("DATA_DIR", "/app/data")
 
-if _STORAGE_BACKEND == "file":
-    storage = FileStorage(data_dir=_DATA_DIR)
-    logger.info("Flask 数据服务器已初始化：FileStorage, 目录=%s", _DATA_DIR)
-else:
-    # MongoStorage 的配置由环境变量提供：MONGO_URI / MONGO_DB / MONGO_COLLECTION
-    storage = MongoStorage()
-    logger.info(
-        "Flask 数据服务器已初始化：MongoStorage, uri=%s, db=%s, collection=%s",
-        os.environ.get("MONGO_URI", "mongodb://mongodb:27017"),
-        os.environ.get("MONGO_DB", "petnode"),
-        os.environ.get("MONGO_COLLECTION", "received_records"),
-    )
+class _LazyProxy:
+    """延迟初始化代理，首次访问时才创建真正的存储实例。"""
+    def __init__(self, factory):
+        self._factory = factory
+        self._instance = None
+
+    def __getattr__(self, name):
+        if self._instance is None:
+            self._instance = self._factory()
+        return getattr(self._instance, name)
+
+
+mongo_storage = _LazyProxy(MongoStorage)
+mysql_storage = _LazyProxy(MySQLStorage)
+
+
+def _persist_record(record: dict) -> None:
+    """Mongo 保存全量实时数据；MySQL 保存静态信息和异常信息。"""
+    mongo_storage.save(record)
+    try:
+        mysql_storage.save(record)
+    except Exception as exc:
+        logger.warning("MySQL 持久化失败（Mongo 已保存）: %s", exc)
+
+
+def _parse_iso_datetime(value: str | None, field_name: str) -> datetime | None:
+    """解析 ISO 8601 时间；空值返回 None，非法值抛 ValueError。"""
+    if value is None:
+        return None
+
+    text = value.strip()
+    if not text:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field_name} 必须是合法的 ISO 8601 时间") from exc
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone().replace(tzinfo=None)
+    return parsed
+
+
+def _normalize_json_value(value):
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, list):
+        return [_normalize_json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _normalize_json_value(item) for key, item in value.items()}
+    return value
+
+
+def _build_query_response(source: str, kind: str, payload):
+    return jsonify({
+        "status": "ok",
+        "source": source,
+        "kind": kind,
+        "count": len(payload) if isinstance(payload, list) else None,
+        "data": _normalize_json_value(payload),
+    }), 200
+
+
+def _first_query_arg(*names: str, default: str | None = None) -> str | None:
+    for name in names:
+        value = request.args.get(name)
+        if value is not None and str(value).strip():
+            return value
+    return default
+
+
+def _handle_query_request(
+    default_user_key: str | None = None,
+    default_device_key: str | None = None,
+    source_override: str | None = None,
+    kind_override: str | None = None,
+):
+    source = (source_override or request.args.get("source", "mongo")).strip().lower()
+    kind = (kind_override or request.args.get("kind", "records")).strip().lower()
+    user_key = _first_query_arg("user_id", "user_key", default=default_user_key)
+    device_key = _first_query_arg("device_id", "device_key", default=default_device_key)
+
+    try:
+        limit = int(request.args.get("limit", "100"))
+        offset = int(request.args.get("offset", "0"))
+    except ValueError:
+        return jsonify({"status": "error", "message": "limit/offset 必须是整数"}), 400
+
+    try:
+        start_time = _parse_iso_datetime(request.args.get("start_time"), "start_time")
+        end_time = _parse_iso_datetime(request.args.get("end_time"), "end_time")
+    except ValueError:
+        return jsonify({"status": "error", "message": "start_time/end_time 必须是合法的 ISO 8601 时间"}), 400
+
+    if source == "mongo":
+        if kind not in {"records", "stream"}:
+            return jsonify({"status": "error", "message": "Mongo 仅支持 kind=records"}), 400
+
+        items = mongo_storage.query_records(
+            user_id=user_key,
+            device_id=device_key,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+        )
+        return _build_query_response("mongo", "records", items)
+
+    if source == "mysql":
+        if kind in {"profile", "static"}:
+            profile = mysql_storage.query_profile(user_key=user_key, device_key=device_key)
+            return _build_query_response("mysql", "profile", profile)
+
+        if kind in {"records", "anomalies", "anomaly"}:
+            items = mysql_storage.query_anomalies(
+                user_key=user_key,
+                device_key=device_key,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+            )
+            return _build_query_response("mysql", "anomalies", items)
+
+        return jsonify({"status": "error", "message": "Mysql 仅支持 kind=records/anomalies/profile"}), 400
+
+    return jsonify({"status": "error", "message": "source 只能是 mongo 或 mysql"}), 400
 
 # ────────────────── 统计计数器 ──────────────────
 
 # 记录服务器启动以来接收到的总数据条数（用于日志和健康检查）
 _total_received: int = 0
+
+# ────────────────── 注册 vx API Blueprint ──────────────────
+
+# 将微信认证、用户信息、宠物遥测三个 Blueprint 挂载到 Flask 应用。
+# 路由前缀由各 Blueprint 自身定义（/api/v1/wechat/* / /api/v1/me / /api/v1/pets/*）。
+try:
+    from flask_server.blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
+    from flask_server.db import ensure_indexes
+except ImportError:
+    from .blueprints import wechat_bp, users_bp, pets_bp, devices_bp, family_bp
+    from .db import ensure_indexes
+
+app.register_blueprint(wechat_bp)
+app.register_blueprint(users_bp)
+app.register_blueprint(pets_bp)
+app.register_blueprint(devices_bp)
+app.register_blueprint(family_bp)
+
+# 在启动时尝试创建 MongoDB 索引。
+# ensure_indexes() 内部已处理 PyMongoError（MongoDB 未就绪时不阻断启动）。
+# 此处的 broad catch 仅应对极少数不可预期的启动异常（例如 MongoClient 配置解析错误）。
+try:
+    ensure_indexes()
+except Exception as _idx_exc:
+    logger.warning("vx API 索引初始化出现意外异常: %s", _idx_exc)
 
 # ────────────────── API 路由 ──────────────────
 
@@ -246,8 +374,8 @@ def receive_data():
 
     # ── 第 4 步：将数据保存到存储层 ──
     try:
-        # 调用存储层的 save 方法（当前是写文件，未来可能是写 MySQL）
-        storage.save(record)
+        # Mongo 负责实时全量数据，MySQL 负责静态信息与异常信息
+        _persist_record(record)
     except Exception as exc:
         # 存储失败时记录错误日志
         logger.error("数据保存失败: %s", exc)
@@ -299,6 +427,60 @@ def health_check():
         "total_received": _total_received,  # 累计接收数据条数
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # 当前服务器时间
     }), 200  # HTTP 状态码 200 OK
+
+
+@app.route("/api/records", methods=["GET"])
+def query_records():
+    """统一查询接口：按用户、设备、时间范围查询 Mongo 或 MySQL。"""
+    return _handle_query_request()
+
+
+@app.route("/api/v1/records", methods=["GET"])
+def query_records_v1():
+    """兼容文档中的 v1 查询入口。"""
+    return _handle_query_request()
+
+
+@app.route("/api/users/<user_key>/records", methods=["GET"])
+def query_records_by_user(user_key: str):
+    """按用户查询，user_key 在 Mongo 中按 user_id 匹配，在 MySQL 中可按 user_id 或 username 匹配。"""
+    return _handle_query_request(default_user_key=user_key)
+
+
+@app.route("/api/v1/users/<user_key>/records", methods=["GET"])
+def query_records_by_user_v1(user_key: str):
+    """兼容文档中的 v1 按用户查询入口。"""
+    return _handle_query_request(default_user_key=user_key)
+
+
+@app.route("/api/devices/<device_key>/records", methods=["GET"])
+def query_records_by_device(device_key: str):
+    """按设备查询，device_key 在 Mongo 中按 device_id 匹配，在 MySQL 中可按 device_id 或 device_sn 匹配。"""
+    return _handle_query_request(default_device_key=device_key)
+
+
+@app.route("/api/v1/devices/<device_key>/records", methods=["GET"])
+def query_records_by_device_v1(device_key: str):
+    """兼容文档中的 v1 按设备查询入口。"""
+    return _handle_query_request(default_device_key=device_key)
+
+
+@app.route("/api/profile", methods=["GET"])
+def query_profile():
+    """查询 MySQL 中的固定档案信息（用户、设备、特质、事件字典）。"""
+    source = request.args.get("source", "mysql").strip().lower()
+    if source != "mysql":
+        return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
+    return _handle_query_request(source_override="mysql", kind_override="profile")
+
+
+@app.route("/api/v1/profile", methods=["GET"])
+def query_profile_v1():
+    """兼容文档中的 v1 profile 入口。"""
+    source = request.args.get("source", "mysql").strip().lower()
+    if source != "mysql":
+        return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
+    return _handle_query_request(source_override="mysql", kind_override="profile")
 
 
 # ────────────────── 启动入口 ──────────────────

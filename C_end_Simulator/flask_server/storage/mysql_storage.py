@@ -1,0 +1,847 @@
+"""
+MySQLStorage —— 将接收到的数据按规范化结构保存到 MySQL
+
+对接方式：
+- `user` / `device` / `trait_type` / `event_type` 作为基础字典表自动补齐
+- 每次上报的模拟数据拆成多条 `telemetry_record`
+- `event` / `event_phase` 通过 `event_instance` 记录一次事件实例
+
+说明：
+- 当前引擎上报的是一条扁平 JSON；这里把它转换成 `crebas.sql` 风格的规范化模型。
+- `device_id` 在引擎侧是字符串，这里会稳定映射为一个 BIGINT 主键，同时把原始字符串保存到 `device_sn`。
+- `user_id` 使用默认用户（可通过环境变量覆盖）。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Optional
+
+import pymysql
+from pymysql.cursors import DictCursor
+
+from .base_storage import BaseStorage
+
+logger = logging.getLogger("storage.mysql")
+
+
+class MySQLStorage(BaseStorage):
+    """MySQL 规范化存储实现。"""
+
+    _TRAIT_TYPES: list[tuple[int, str, str, Optional[str]]] = [
+        (1, "heart_rate", "心率", "bpm"),
+        (2, "resp_rate", "呼吸频率", "次/分钟"),
+        (3, "temperature", "体温", "°C"),
+        (4, "steps", "步数", "step"),
+        (5, "battery", "电量", "%"),
+        (6, "gps_lat", "GPS纬度", "deg"),
+        (7, "gps_lng", "GPS经度", "deg"),
+        (8, "behavior", "行为状态", None),
+    ]
+
+    _EVENT_TYPES: dict[str, tuple[int, str, int]] = {
+        "fever": (1, "发烧", 2),
+        "injury": (2, "受伤", 1),
+    }
+
+    def __init__(
+        self,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        db: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        charset: Optional[str] = None,
+    ) -> None:
+        self.host = host or os.environ.get("MYSQL_HOST", "localhost")
+        self.port = port or int(os.environ.get("MYSQL_PORT", "3306"))
+        self.db = db or os.environ.get("MYSQL_DB", "petnode")
+        self.user = user or os.environ.get("MYSQL_USER", "root")
+        self.password = password or os.environ.get("MYSQL_PASSWORD", "")
+        self.charset = charset or os.environ.get("MYSQL_CHARSET", "utf8mb4")
+        self.default_user_id = int(os.environ.get("MYSQL_DEFAULT_USER_ID", "1"))
+        self.default_username = os.environ.get("MYSQL_DEFAULT_USERNAME", "petnode")
+        self.default_password_hash = os.environ.get("MYSQL_DEFAULT_PASSWORD_HASH", "")
+        self.default_nick_name = os.environ.get("MYSQL_DEFAULT_NICK_NAME", "PetNode")
+        self.default_device_name_prefix = os.environ.get("MYSQL_DEVICE_NAME_PREFIX", "PetNode-")
+
+        try:
+            self._connection = pymysql.connect(
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database=self.db,
+                charset=self.charset,
+                cursorclass=DictCursor,
+                autocommit=False,
+            )
+        except pymysql.Error as exc:
+            logger.error(
+                "MySQLStorage connection failed: %s:%d, db=%s, error=%s",
+                self.host,
+                self.port,
+                self.db,
+                exc,
+            )
+            raise
+
+        self._open_event_cache: dict[int, tuple[int, str]] = {}
+        self._ensure_schema()
+        self._seed_lookup_tables()
+        self._close_orphaned_events()
+        logger.info(
+            "MySQLStorage initialized: host=%s port=%s db=%s user=%s",
+            self.host,
+            self.port,
+            self.db,
+            self.user,
+        )
+
+    # ------------------------------------------------------------------
+    # Schema / seed data
+    # ------------------------------------------------------------------
+
+    def _ensure_schema(self) -> None:
+        """创建与 crebas.sql 对齐的基础表结构。"""
+        statements = [
+            """
+            CREATE TABLE IF NOT EXISTS `user` (
+                user_id BIGINT NOT NULL,
+                username VARCHAR(50) NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                phone VARCHAR(11),
+                nick_name VARCHAR(30) NOT NULL,
+                create_time DATETIME(3) NOT NULL,
+                update_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS device (
+                device_id BIGINT NOT NULL,
+                user_id BIGINT NOT NULL,
+                device_sn VARCHAR(50) NOT NULL,
+                device_name VARCHAR(50) NOT NULL,
+                pet_name VARCHAR(30) NOT NULL,
+                is_online TINYINT,
+                activate_time DATETIME(3),
+                create_time DATETIME(3) NOT NULL,
+                update_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (device_id),
+                UNIQUE KEY uk_device_sn (device_sn),
+                KEY idx_device_user (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS device_trait (
+                device_id BIGINT NOT NULL,
+                trait_type_id BIGINT NOT NULL,
+                is_enabled TINYINT NOT NULL,
+                create_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (device_id, trait_type_id),
+                KEY idx_trait_type (trait_type_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS event_type (
+                event_type_id BIGINT NOT NULL,
+                event_code VARCHAR(50) NOT NULL,
+                event_name VARCHAR(50) NOT NULL,
+                event_level TINYINT NOT NULL,
+                create_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (event_type_id),
+                UNIQUE KEY uk_event_code (event_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS event_instance (
+                event_instance_id BIGINT NOT NULL AUTO_INCREMENT,
+                device_id BIGINT NOT NULL,
+                event_type_id BIGINT NOT NULL,
+                status TINYINT NOT NULL,
+                event_content VARCHAR(500),
+                start_time DATETIME(3) NOT NULL,
+                end_time DATETIME(3),
+                PRIMARY KEY (event_instance_id),
+                KEY idx_device_status_time (device_id, status, start_time),
+                KEY idx_event_type (event_type_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS trait_type (
+                trait_type_id BIGINT NOT NULL,
+                trait_code VARCHAR(50) NOT NULL,
+                trait_name VARCHAR(50) NOT NULL,
+                trait_unit VARCHAR(20),
+                create_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (trait_type_id),
+                UNIQUE KEY uk_trait_code (trait_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS telemetry_record (
+                record_id BIGINT NOT NULL AUTO_INCREMENT,
+                user_id BIGINT NOT NULL,
+                device_id BIGINT NOT NULL,
+                event_instance_id BIGINT,
+                trait_type_id BIGINT NOT NULL,
+                trait_value VARCHAR(100) NOT NULL,
+                timestamp DATETIME(3) NOT NULL,
+                PRIMARY KEY (record_id),
+                KEY idx_device_timestamp (device_id, timestamp),
+                KEY idx_user_timestamp (user_id, timestamp),
+                KEY idx_timestamp (timestamp),
+                KEY idx_trait_type (trait_type_id),
+                KEY idx_event_instance (event_instance_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS anomaly_record (
+                anomaly_id BIGINT NOT NULL AUTO_INCREMENT,
+                user_id BIGINT NOT NULL,
+                device_id BIGINT NOT NULL,
+                event_instance_id BIGINT,
+                anomaly_code VARCHAR(80) NOT NULL,
+                anomaly_detail JSON,
+                record_timestamp DATETIME(3) NOT NULL,
+                create_time DATETIME(3) NOT NULL,
+                PRIMARY KEY (anomaly_id),
+                KEY idx_device_time (device_id, record_timestamp),
+                KEY idx_user_time (user_id, record_timestamp),
+                KEY idx_anomaly_code (anomaly_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """,
+        ]
+
+        try:
+            with self._connection.cursor() as cursor:
+                for statement in statements:
+                    cursor.execute(statement)
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to initialize MySQL schema", exc_info=True)
+            raise
+
+    def _seed_lookup_tables(self) -> None:
+        """插入默认用户、trait_type 和 event_type 字典数据。"""
+        now = self._utc_now()
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO `user` (user_id, username, password_hash, phone, nick_name, create_time, update_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        username = VALUES(username),
+                        nick_name = VALUES(nick_name),
+                        update_time = VALUES(update_time)
+                    """,
+                    (
+                        self.default_user_id,
+                        self.default_username,
+                        "",
+                        None,
+                        self.default_nick_name,
+                        now,
+                        now,
+                    ),
+                )
+
+                for trait_type_id, trait_code, trait_name, trait_unit in self._TRAIT_TYPES:
+                    cursor.execute(
+                        """
+                        INSERT INTO trait_type (trait_type_id, trait_code, trait_name, trait_unit, create_time)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            trait_name = VALUES(trait_name),
+                            trait_unit = VALUES(trait_unit)
+                        """,
+                        (trait_type_id, trait_code, trait_name, trait_unit, now),
+                    )
+
+                for event_code, (event_type_id, event_name, event_level) in self._EVENT_TYPES.items():
+                    cursor.execute(
+                        """
+                        INSERT INTO event_type (event_type_id, event_code, event_name, event_level, create_time)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            event_name = VALUES(event_name),
+                            event_level = VALUES(event_level)
+                        """,
+                        (event_type_id, event_code, event_name, event_level, now),
+                    )
+
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to seed MySQL lookup tables", exc_info=True)
+            raise
+
+    def _close_orphaned_events(self) -> None:
+        """启动时关闭上次进程意外退出遗留的未关闭事件实例。"""
+        now = self._utc_now()
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) AS cnt FROM event_instance WHERE status = 1 AND end_time IS NULL"
+                )
+                row = cursor.fetchone()
+                count = row["cnt"] if row else 0
+                if count > 0:
+                    cursor.execute(
+                        "UPDATE event_instance SET status = 0, end_time = %s WHERE status = 1 AND end_time IS NULL",
+                        (now,),
+                    )
+                    self._connection.commit()
+                    logger.info("已关闭 %d 个孤儿事件实例", count)
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.warning("关闭孤儿事件实例失败（非致命）", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _utc_now() -> datetime:
+        return datetime.now(timezone.utc).replace(microsecond=0, tzinfo=None)
+
+    @staticmethod
+    def _parse_timestamp(value: object) -> datetime:
+        if isinstance(value, datetime):
+            return value.replace(tzinfo=None, microsecond=(value.microsecond // 1000) * 1000)
+
+        if not isinstance(value, str) or not value.strip():
+            logger.warning("timestamp 为空，使用当前时间")
+            return MySQLStorage._utc_now()
+
+        text = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            logger.warning("无法解析 timestamp: %r，使用当前时间", value)
+            return MySQLStorage._utc_now()
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone().replace(tzinfo=None)
+        return parsed.replace(microsecond=(parsed.microsecond // 1000) * 1000)
+
+    @staticmethod
+    def _stable_user_id(user_key: str) -> int:
+        digest = hashlib.sha256(user_key.encode("utf-8")).digest()
+        value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+        return value or 1
+
+    @staticmethod
+    def _stable_device_id(device_sn: str) -> int:
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
+        value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
+        return value or 1
+
+    def _resolve_user_id_from_record(self, record: dict, now: datetime) -> int:
+        """从记录解析 user_id，并确保 user 表有对应用户。"""
+        raw_user_id = record.get("user_id")
+        if raw_user_id in (None, ""):
+            user_id = self.default_user_id
+        elif isinstance(raw_user_id, int):
+            user_id = raw_user_id
+        elif isinstance(raw_user_id, str) and raw_user_id.strip().isdigit():
+            user_id = int(raw_user_id.strip())
+        else:
+            text = str(raw_user_id).strip()
+            user_id = self._stable_user_id(text)
+
+        username = str(record.get("username") or f"user_{user_id}")
+        nick_name = str(record.get("nickname") or username)
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO `user` (user_id, username, password_hash, phone, nick_name, create_time, update_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        username = VALUES(username),
+                        nick_name = VALUES(nick_name),
+                        update_time = VALUES(update_time)
+                    """,
+                    (user_id, username, "", None, nick_name, now, now),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to upsert user: user_id=%s", user_id, exc_info=True)
+            raise
+        return user_id
+
+    def _ensure_device(self, device_sn: str, now: datetime, user_id: int) -> int:
+        device_id = self._stable_device_id(device_sn)
+        device_name = f"{self.default_device_name_prefix}{device_sn[:8]}"
+        pet_name = device_sn[:30]
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO device (
+                        device_id, user_id, device_sn, device_name, pet_name,
+                        is_online, activate_time, create_time, update_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        user_id = VALUES(user_id),
+                        device_sn = VALUES(device_sn),
+                        device_name = VALUES(device_name),
+                        pet_name = VALUES(pet_name),
+                        is_online = VALUES(is_online),
+                        activate_time = VALUES(activate_time),
+                        update_time = VALUES(update_time)
+                    """,
+                    (
+                        device_id,
+                        user_id,
+                        device_sn,
+                        device_name,
+                        pet_name,
+                        1,
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+
+                for trait_type_id, _, _, _ in self._TRAIT_TYPES:
+                    cursor.execute(
+                        """
+                        INSERT INTO device_trait (device_id, trait_type_id, is_enabled, create_time)
+                        VALUES (%s, %s, %s, %s)
+                        ON DUPLICATE KEY UPDATE
+                            is_enabled = VALUES(is_enabled)
+                        """,
+                        (device_id, trait_type_id, 1, now),
+                    )
+
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to upsert device: device_sn=%s", device_sn, exc_info=True)
+            raise
+
+        return device_id
+
+    def _ensure_event_type(self, event_name: str, now: datetime) -> int:
+        event_code = event_name.strip().lower()
+        event_type_id, event_label, event_level = self._EVENT_TYPES.get(
+            event_code,
+            (self._stable_device_id(f"event:{event_code}"), event_name, 1),
+        )
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO event_type (event_type_id, event_code, event_name, event_level, create_time)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        event_name = VALUES(event_name),
+                        event_level = VALUES(event_level)
+                    """,
+                    (event_type_id, event_code, event_label, event_level, now),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to upsert event type: %s", event_name, exc_info=True)
+            raise
+
+        return event_type_id
+
+    def _ensure_active_event(
+        self,
+        device_id: int,
+        event_name: Optional[str],
+        event_phase: Optional[str],
+        record_timestamp: datetime,
+        now: datetime,
+    ) -> Optional[int]:
+        """确保事件实例状态与当前上报一致。"""
+        if not event_name:
+            cached = self._open_event_cache.pop(device_id, None)
+            if cached is not None:
+                event_instance_id, _ = cached
+                try:
+                    with self._connection.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            UPDATE event_instance
+                            SET status = %s, end_time = %s
+                            WHERE event_instance_id = %s
+                            """,
+                            (0, now, event_instance_id),
+                        )
+                    self._connection.commit()
+                except pymysql.Error:
+                    self._connection.rollback()
+                    logger.warning("Failed to close event instance %s", event_instance_id, exc_info=True)
+            return None
+
+        event_type_id = self._ensure_event_type(event_name, now)
+        cached = self._open_event_cache.get(device_id)
+
+        if cached is None or cached[1] != event_name:
+            event_content = json.dumps(
+                {
+                    "event": event_name,
+                    "phase": event_phase,
+                    "opened_at": record_timestamp.isoformat(timespec="seconds"),
+                },
+                ensure_ascii=False,
+            )
+            try:
+                with self._connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO event_instance (device_id, event_type_id, status, event_content, start_time, end_time)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (device_id, event_type_id, 1, event_content, record_timestamp, None),
+                    )
+                    event_instance_id = int(cursor.lastrowid)
+                self._connection.commit()
+            except pymysql.Error:
+                self._connection.rollback()
+                logger.error("Failed to open event instance: %s", event_name, exc_info=True)
+                raise
+
+            self._open_event_cache[device_id] = (event_instance_id, event_name)
+            return event_instance_id
+
+        event_instance_id = cached[0]
+        event_content = json.dumps(
+            {
+                "event": event_name,
+                "phase": event_phase,
+                "updated_at": record_timestamp.isoformat(timespec="seconds"),
+            },
+            ensure_ascii=False,
+        )
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE event_instance
+                    SET status = %s, event_content = %s
+                    WHERE event_instance_id = %s
+                    """,
+                    (1, event_content, event_instance_id),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.warning("Failed to refresh event instance %s", event_instance_id, exc_info=True)
+            raise
+
+        return event_instance_id
+
+    def _insert_telemetry_rows(
+        self,
+        user_id: int,
+        device_id: int,
+        event_instance_id: Optional[int],
+        record_timestamp: datetime,
+        record: dict,
+    ) -> None:
+        telemetry_values = [
+            (1, record.get("heart_rate")),
+            (2, record.get("resp_rate")),
+            (3, record.get("temperature")),
+            (4, record.get("steps")),
+            (5, record.get("battery")),
+            (6, record.get("gps_lat")),
+            (7, record.get("gps_lng")),
+            (8, record.get("behavior")),
+        ]
+
+        try:
+            with self._connection.cursor() as cursor:
+                for trait_type_id, trait_value in telemetry_values:
+                    cursor.execute(
+                        """
+                        INSERT INTO telemetry_record (
+                            user_id, device_id, event_instance_id, trait_type_id, trait_value, timestamp
+                        ) VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            user_id,
+                            device_id,
+                            event_instance_id,
+                            trait_type_id,
+                            str(trait_value),
+                            record_timestamp,
+                        ),
+                    )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to insert telemetry rows", exc_info=True)
+            raise
+
+    @staticmethod
+    def _detect_anomaly(record: dict) -> tuple[bool, str, dict[str, object]]:
+        """判断记录是否属于异常，并返回简要描述。"""
+        event_name = record.get("event")
+        event_phase = record.get("event_phase")
+
+        if event_name not in (None, ""):
+            return True, f"event:{event_name}", {
+                "event": event_name,
+                "event_phase": event_phase,
+            }
+
+        details: dict[str, object] = {}
+        thresholds = {
+            "heart_rate": (30.0, 180.0),
+            "resp_rate": (8.0, 60.0),
+            "temperature": (36.0, 40.5),
+        }
+
+        for field, (minimum, maximum) in thresholds.items():
+            value = record.get(field)
+            if value is None:
+                continue
+
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+
+            if numeric_value < minimum:
+                details[field] = {"value": numeric_value, "rule": f"<{minimum}"}
+            elif numeric_value > maximum:
+                details[field] = {"value": numeric_value, "rule": f">{maximum}"}
+
+        if details:
+            return True, "threshold_breach", details
+
+        return False, "", {}
+
+    def _save_anomaly(
+        self,
+        user_id: int,
+        device_id: int,
+        event_instance_id: Optional[int],
+        record_timestamp: datetime,
+        anomaly_code: str,
+        anomaly_detail: dict[str, object],
+    ) -> None:
+        now = self._utc_now()
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO anomaly_record (
+                        user_id, device_id, event_instance_id, anomaly_code, anomaly_detail, record_timestamp, create_time
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        user_id,
+                        device_id,
+                        event_instance_id,
+                        anomaly_code,
+                        json.dumps(anomaly_detail, ensure_ascii=False),
+                        record_timestamp,
+                        now,
+                    ),
+                )
+            self._connection.commit()
+        except pymysql.Error:
+            self._connection.rollback()
+            logger.error("Failed to insert anomaly record", exc_info=True)
+            raise
+
+    @staticmethod
+    def _rows_to_dicts(cursor) -> list[dict]:
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def query_anomalies(
+        self,
+        user_key: Optional[str] = None,
+        device_key: Optional[str] = None,
+        start_time: Optional[datetime] = None,
+        end_time: Optional[datetime] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """按用户、设备和时间范围查询异常记录。"""
+        sql = [
+            "SELECT a.anomaly_id, a.user_id, u.username, a.device_id, d.device_sn, d.device_name, d.pet_name, ",
+            "a.event_instance_id, a.anomaly_code, a.anomaly_detail, a.record_timestamp, a.create_time ",
+            "FROM anomaly_record a ",
+            "LEFT JOIN `user` u ON u.user_id = a.user_id ",
+            "LEFT JOIN device d ON d.device_id = a.device_id ",
+            "WHERE 1=1",
+        ]
+        params: list[object] = []
+
+        if user_key:
+            if user_key.isdigit():
+                sql.append(" AND (a.user_id = %s OR u.username = %s)")
+                params.extend([int(user_key), user_key])
+            else:
+                sql.append(" AND u.username = %s")
+                params.append(user_key)
+        if device_key:
+            if device_key.isdigit():
+                sql.append(" AND (a.device_id = %s OR d.device_sn = %s)")
+                params.extend([int(device_key), device_key])
+            else:
+                sql.append(" AND d.device_sn = %s")
+                params.append(device_key)
+        if start_time is not None:
+            sql.append(" AND a.record_timestamp >= %s")
+            params.append(start_time)
+        if end_time is not None:
+            sql.append(" AND a.record_timestamp <= %s")
+            params.append(end_time)
+
+        sql.append(" ORDER BY a.record_timestamp DESC, a.anomaly_id DESC LIMIT %s OFFSET %s")
+        params.extend([max(limit, 1), max(offset, 0)])
+
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute("".join(sql), params)
+                return self._rows_to_dicts(cursor)
+        except pymysql.Error:
+            logger.error("Failed to query anomalies", exc_info=True)
+            raise
+
+    def query_profile(
+        self,
+        user_key: Optional[str] = None,
+        device_key: Optional[str] = None,
+    ) -> dict[str, list[dict]]:
+        """查询固定档案信息（用户、设备、特质、事件字典）。"""
+        try:
+            with self._connection.cursor() as cursor:
+                result: dict[str, list[dict]] = {}
+
+                user_sql = "SELECT user_id, username, phone, nick_name, create_time, update_time FROM `user` WHERE 1=1"
+                user_params: list[object] = []
+                if user_key:
+                    if user_key.isdigit():
+                        user_sql += " AND (user_id = %s OR username = %s)"
+                        user_params.extend([int(user_key), user_key])
+                    else:
+                        user_sql += " AND username = %s"
+                        user_params.append(user_key)
+                cursor.execute(user_sql, user_params)
+                result["users"] = self._rows_to_dicts(cursor)
+
+                device_sql = (
+                    "SELECT device_id, user_id, device_sn, device_name, pet_name, is_online, activate_time, create_time, update_time "
+                    "FROM device WHERE 1=1"
+                )
+                device_params: list[object] = []
+                if user_key:
+                    if user_key.isdigit():
+                        device_sql += " AND (user_id = %s OR user_id IN (SELECT user_id FROM `user` WHERE username = %s))"
+                        device_params.extend([int(user_key), user_key])
+                    else:
+                        device_sql += " AND user_id IN (SELECT user_id FROM `user` WHERE username = %s)"
+                        device_params.append(user_key)
+                if device_key:
+                    if device_key.isdigit():
+                        device_sql += " AND (device_id = %s OR device_sn = %s)"
+                        device_params.extend([int(device_key), device_key])
+                    else:
+                        device_sql += " AND device_sn = %s"
+                        device_params.append(device_key)
+                cursor.execute(device_sql, device_params)
+                result["devices"] = self._rows_to_dicts(cursor)
+
+                cursor.execute(
+                    "SELECT trait_type_id, trait_code, trait_name, trait_unit, create_time FROM trait_type ORDER BY trait_type_id"
+                )
+                result["traits"] = self._rows_to_dicts(cursor)
+
+                cursor.execute(
+                    "SELECT event_type_id, event_code, event_name, event_level, create_time FROM event_type ORDER BY event_type_id"
+                )
+                result["events"] = self._rows_to_dicts(cursor)
+
+                return result
+        except pymysql.Error:
+            logger.error("Failed to query profile", exc_info=True)
+            raise
+
+    # ------------------------------------------------------------------
+    # BaseStorage API
+    # ------------------------------------------------------------------
+
+    def save(self, record: dict) -> None:
+        if not isinstance(record, dict):
+            raise TypeError("record must be a dict")
+
+        device_sn = str(record.get("device_id") or "").strip()
+        if not device_sn:
+            raise ValueError("record.device_id is required")
+
+        record_timestamp = self._parse_timestamp(record.get("timestamp"))
+        now = self._utc_now()
+        user_id = self._resolve_user_id_from_record(record, now)
+
+        device_id = self._ensure_device(device_sn, now, user_id)
+        is_anomaly, anomaly_code, anomaly_detail = self._detect_anomaly(record)
+
+        event_instance_id: Optional[int]
+        if not is_anomaly:
+            event_instance_id = self._ensure_active_event(
+                device_id=device_id,
+                event_name=None,
+                event_phase=None,
+                record_timestamp=record_timestamp,
+                now=now,
+            )
+        else:
+            event_name = record.get("event")
+            event_phase = record.get("event_phase")
+            event_instance_id = self._ensure_active_event(
+                device_id=device_id,
+                event_name=str(event_name).strip() if event_name not in (None, "") else anomaly_code,
+                event_phase=str(event_phase).strip() if event_phase not in (None, "") else None,
+                record_timestamp=record_timestamp,
+                now=now,
+            )
+
+        self._insert_telemetry_rows(
+            user_id=user_id,
+            device_id=device_id,
+            event_instance_id=event_instance_id,
+            record_timestamp=record_timestamp,
+            record=record,
+        )
+
+        if is_anomaly:
+            self._save_anomaly(
+                user_id=user_id,
+                device_id=device_id,
+                event_instance_id=event_instance_id,
+                record_timestamp=record_timestamp,
+                anomaly_code=anomaly_code,
+                anomaly_detail=anomaly_detail,
+            )
+
+    def close(self) -> None:
+        try:
+            self._connection.close()
+            logger.info("MySQLStorage connection closed")
+        except Exception:
+            logger.warning("Error closing MySQLStorage connection", exc_info=True)
