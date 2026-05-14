@@ -41,12 +41,12 @@ nginx -t && systemctl reload nginx
 说明：
 - `API_KEY` 与 `HMAC_KEY` 在 `flask-server`、`mq-worker`、`engine` 三处必须保持一致。
 - `MYSQL_DEFAULT_PASSWORD_HASH` 需填写你希望设置的默认密码对应的 SHA-256 十六进制哈希值。
-- 示例生成命令：`echo -n 'your_password' | sha256sum`
+- 示例生成命令：`echo -n 'your_password' | sha256sum | awk '{print $1}'`
 
 ## 5) 基础连通性验证
 ```bash
 curl https://pppetnode.com/api/health
 ```
-说明：健康检查接口是 `/api/health`（非 `/api/v1/health`）。  
+说明： 健康检查接口是 `/api/health`（非 `/api/v1/health`）。  
 期望结果：`HTTP 200` 且返回健康状态 JSON。  
 如返回健康状态（HTTP 200）即说明 Nginx -> Flask 转发链路可用。
