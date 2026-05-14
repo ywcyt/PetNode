@@ -1,4 +1,4 @@
-const BASE_URL = 'http://8.156.95.140:5000/api/v1';
+const BASE_URL = 'https://pppetnode.com/api/v1';
 
 const request = (url, method = 'GET', data = {}) => {
   return new Promise((resolve, reject) => {
