@@ -222,6 +222,182 @@
 
 /* 文字变绿加粗 */
 .tab-item.active .tab-text {
-  color: #07c160; 
+  color: #07c160;
   font-weight: bold;
+}
+
+/* ================= 我的页面 ================= */
+.profile-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 180rpx;
+  align-items: center;
+}
+
+.profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 60rpx;
+}
+
+.profile-avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  border: 4rpx solid #ffffff;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+  margin-bottom: 20rpx;
+}
+
+.profile-nickname {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #1a1a1a;
+  margin-bottom: 10rpx;
+}
+
+.profile-id {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.profile-menu {
+  width: 100%;
+  padding: 0 40rpx;
+  margin-bottom: 40rpx;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30rpx 20rpx;
+  font-size: 30rpx;
+  color: #333333;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.menu-item .arrow {
+  font-size: 36rpx;
+  color: #cccccc;
+}
+
+.logout-section {
+  width: 100%;
+  padding: 0 40rpx;
+}
+
+.logout-btn {
+  width: 100%;
+  padding: 26rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.06);
+  border-radius: 16rpx;
+}
+
+/* ================= 空状态 ================= */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 120rpx;
+}
+
+.empty-icon {
+  font-size: 100rpx;
+  margin-bottom: 30rpx;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 30rpx;
+  color: #888888;
+  margin-bottom: 12rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #bbbbbb;
+}
+
+/* ================= 绑定设备弹窗 ================= */
+.bind-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.bind-modal {
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 40rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.bind-modal-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #1a1a1a;
+  text-align: center;
+  margin-bottom: 10rpx;
+}
+
+.bind-modal-device {
+  font-size: 24rpx;
+  color: #999999;
+  text-align: center;
+  margin-bottom: 30rpx;
+}
+
+.bind-input {
+  width: 100%;
+  height: 80rpx;
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  margin-bottom: 16rpx;
+  box-sizing: border-box;
+}
+
+.bind-modal-btns {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10rpx;
+}
+
+.bind-btn {
+  width: 220rpx;
+  height: 80rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 40rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+.bind-btn.cancel {
+  background: #f5f5f5;
+  color: #666666;
+}
+
+.bind-btn.confirm {
+  background: #07c160;
+  color: #ffffff;
 }

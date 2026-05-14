@@ -25,7 +25,7 @@
           <text class="avg-number">{{item.average}}</text>
           <text class="avg-unit">{{item.unit}}</text>
         </view>
-        <text class="date-range">2026年5月1日 - 7日</text>
+        <text class="date-range">{{item.dateRange || '---'}}</text>
       </view>
 
       <view class="css-chart-box">

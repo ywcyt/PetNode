@@ -1,2 +1,21 @@
-<!--pages/health/health.wxml-->
-<text>pages/health/health.wxml</text>
+<view class="health-container">
+
+  <view class="empty-state" wx:if="{{pets.length === 0}}">
+    <view class="empty-icon">📈</view>
+    <text class="empty-text">暂无宠物数据</text>
+    <text class="empty-hint">请先在首页绑定设备</text>
+  </view>
+
+  <view class="pet-list" wx:if="{{pets.length > 0}}">
+    <view class="pet-card" wx:for="{{pets}}" wx:key="pet_id" data-id="{{item.pet_id}}" bindtap="goToDetail">
+      <view class="pet-card-left">
+        <text class="pet-avatar">{{item.avatar_url || '🐕'}}</text>
+      </view>
+      <view class="pet-card-right">
+        <text class="pet-name">{{item.pet_name}}</text>
+        <text class="pet-breed">{{item.breed || '查看健康详情'}}</text>
+      </view>
+    </view>
+  </view>
+
+</view>

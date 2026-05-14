@@ -1,66 +1,44 @@
-// pages/health/health.js
+const API = require('../../utils/api.js');
+
 Page({
-
-  /**
-   * 页面的初始数据
-   */
   data: {
-
+    pets: [],
+    loading: false
   },
 
-  /**
-   * 生命周期函数--监听页面加载
-   */
-  onLoad(options) {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面初次渲染完成
-   */
-  onReady() {
-
-  },
-
-  /**
-   * 生命周期函数--监听页面显示
-   */
   onShow() {
-
+    this.loadPetsWithHealth();
   },
 
-  /**
-   * 生命周期函数--监听页面隐藏
-   */
-  onHide() {
+  async loadPetsWithHealth() {
+    if (this.data.loading) return;
+    this.setData({ loading: true });
+    try {
+      const res = await API.fetchPets();
+      const pets = res.pets || [];
 
+      // 并发拉取每只宠物的概览数据
+      const enriched = await Promise.all(
+        pets.map(async (pet) => {
+          try {
+            const summary = await API.fetchPetSummary(pet.pet_id);
+            return { ...pet, summary };
+          } catch (err) {
+            return { ...pet, summary: null };
+          }
+        })
+      );
+
+      this.setData({ pets: enriched });
+    } catch (err) {
+      console.error('加载健康数据失败:', err);
+    } finally {
+      this.setData({ loading: false });
+    }
   },
 
-  /**
-   * 生命周期函数--监听页面卸载
-   */
-  onUnload() {
-
-  },
-
-  /**
-   * 页面相关事件处理函数--监听用户下拉动作
-   */
-  onPullDownRefresh() {
-
-  },
-
-  /**
-   * 页面上拉触底事件的处理函数
-   */
-  onReachBottom() {
-
-  },
-
-  /**
-   * 用户点击右上角分享
-   */
-  onShareAppMessage() {
-
+  goToDetail(e) {
+    const petId = e.currentTarget.dataset.id;
+    wx.navigateTo({ url: `/pages/petDetail/petDetail?id=${petId}` });
   }
-})
+});
