@@ -401,7 +401,7 @@ def list_accessible_pets(db, user_id: str) -> list[dict]:
 
     merged: dict[str, dict] = {}
     for item in own:
-        merged[item["device_id"]] = {**item, "access_mode": "owner"}
+        merged[item["device_id"]] = {**item, "pet_id": item["device_id"], "access_mode": "owner"}
     for item in shared:
-        merged.setdefault(item["device_id"], {**item, "access_mode": "family"})
+        merged.setdefault(item["device_id"], {**item, "pet_id": item["device_id"], "access_mode": "family"})
     return list(merged.values())

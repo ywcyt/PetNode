@@ -33,6 +33,7 @@ import logging
 from typing import Any
 
 from .binding import assert_user_can_access_pet
+from ..helpers import now_iso as _now_iso
 
 logger = logging.getLogger("flask_server.services.telemetry")
 
@@ -499,7 +500,7 @@ def get_temperature_series(
         for r in records
         if "temperature" in r
     ]
-    return {"pet_id": pet_id, "unit": "celsius", "count": len(points), "points": points}
+    return {"pet_id": pet_id, "unit": "°C", "count": len(points), "points": points}
 
 
 def get_latest_location(db, user_id: str, pet_id: str) -> dict:
@@ -570,5 +571,3 @@ def _build_event_id(pet_id: str, row: dict) -> str:
     text = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
 
-
-from ..helpers import now_iso as _now_iso  # noqa: E402 (used by update_pet_profile)

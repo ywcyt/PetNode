@@ -334,14 +334,14 @@ class MySQLStorage(BaseStorage):
         return parsed.replace(microsecond=(parsed.microsecond // 1000) * 1000)
 
     @staticmethod
-    def _stable_user_id(user_key: str) -> int:
-        digest = hashlib.sha256(user_key.encode("utf-8")).digest()
+    def _stable_device_id(device_sn: str) -> int:
+        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 
     @staticmethod
-    def _stable_device_id(device_sn: str) -> int:
-        digest = hashlib.sha256(device_sn.encode("utf-8")).digest()
+    def _stable_user_id(user_key: str) -> int:
+        digest = hashlib.sha256(user_key.encode("utf-8")).digest()
         value = int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
         return value or 1
 

@@ -1,3 +1,5 @@
+// 生产环境：https://pppetnode.com/api/v1
+// 本地联调：http://localhost:5000/api/v1
 const BASE_URL = 'https://pppetnode.com/api/v1';
 
 const request = (url, method = 'GET', data = {}) => {

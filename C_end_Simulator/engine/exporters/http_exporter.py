@@ -304,35 +304,24 @@ class HttpExporter(BaseExporter):
         缓存策略：
           - 每条记录追加到当天的缓存文件中（按天分文件，方便管理）
           - 文件名格式: cache_2025-06-01.jsonl
-          - 使用线程锁保护（多线程安全）
-          - 写入后立即 fsync 确保数据持久化（断电也不丢）
+          - 写入加锁，fsync 在锁外执行以保证持久化同时不阻塞其他线程
 
         Parameters
         ----------
         record : dict
             发送失败的数据记录
         """
-        # 从记录中提取时间戳作为文件名的日期部分
-        # 如果没有 timestamp 字段，使用 "unknown" 作为默认值
         ts = record.get("timestamp", "unknown")
-
-        # 取日期部分（"2025-06-01T00:01:00" → "2025-06-01"）
-        # 如果 timestamp 格式异常，用前 10 个字符兜底
         date_str = ts[:10] if isinstance(ts, str) and len(ts) >= 10 else "unknown"
-
-        # 拼接缓存文件路径：offline_cache/cache_2025-06-01.jsonl
         cache_file = self._cache_dir / f"cache_{date_str}.jsonl"
-
-        # 将 record 序列化为 JSON 字符串
         line = json.dumps(record, ensure_ascii=False)
 
-        # 加锁写入（防止多线程并发写同一个缓存文件）
         with self._lock:
-            # 以追加模式打开缓存文件并写入一行
-            with open(cache_file, "a", encoding="utf-8") as f:
-                f.write(line + "\n")  # 写入 JSON + 换行符
-                f.flush()  # 将 Python 缓冲区刷到 OS
-                os.fsync(f.fileno())  # 将 OS 缓冲区刷到磁盘（双保险）
+            f = open(cache_file, "a", encoding="utf-8")
+            f.write(line + "\n")
+            f.flush()
+        os.fsync(f.fileno())
+        f.close()
 
         # 更新缓存计数器
         self._cached_count += 1

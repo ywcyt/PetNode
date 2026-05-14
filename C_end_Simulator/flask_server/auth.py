@@ -20,7 +20,9 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import jwt
-from flask import g, jsonify, request
+from flask import g, request
+
+from .helpers import err
 
 logger = logging.getLogger("flask_server.auth")
 
@@ -89,10 +91,7 @@ def require_auth(f):
     def decorated(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            return (
-                jsonify({"code": 40101, "message": "未授权，请先登录", "data": None}),
-                401,
-            )
+            return err(40101, "未授权，请先登录", 401)
         token = auth_header[len("Bearer "):]
         try:
             payload = decode_token(token)
@@ -102,15 +101,9 @@ def require_auth(f):
             if not g.user_id:
                 raise jwt.InvalidTokenError("Token missing sub claim")
         except jwt.ExpiredSignatureError:
-            return (
-                jsonify({"code": 40101, "message": "Token 已过期，请重新登录", "data": None}),
-                401,
-            )
+            return err(40101, "Token 已过期，请重新登录", 401)
         except jwt.InvalidTokenError:
-            return (
-                jsonify({"code": 40101, "message": "Token 无效，请重新登录", "data": None}),
-                401,
-            )
+            return err(40101, "Token 无效，请重新登录", 401)
         return f(*args, **kwargs)
 
     return decorated

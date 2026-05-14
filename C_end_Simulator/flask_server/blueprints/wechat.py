@@ -97,6 +97,14 @@ def _call_code2session(code: str) -> dict:
     return data
 
 
+def _safe_delete_user(db, user_id: str) -> None:
+    """安全删除用户记录，失败时记录日志而非抛出异常。"""
+    try:
+        db["users"].delete_one({"user_id": user_id})
+    except Exception:
+        logger.warning("清理孤儿用户失败: user_id=%s", user_id, exc_info=True)
+
+
 # ────────────────── 路由 ──────────────────
 
 
@@ -238,16 +246,26 @@ def wechat_bind():
         )
 
     # 不存在绑定：创建新用户（若无 access_token），再绑定
+    created_user = False
     if not user_id:
         now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
         user_id = str(uuid.uuid4())
-        db["users"].insert_one({"user_id": user_id, "created_at": now_iso})
+        db["users"].insert_one({
+            "user_id": user_id,
+            "nickname": f"用户{user_id[:6]}",
+            "created_at": now_iso,
+        })
+        created_user = True
 
     try:
         result = bind_user_to_wechat(db, user_id, openid, unionid)
     except PermissionError:
+        if created_user:
+            _safe_delete_user(db, user_id)
         return err(40901, "该微信身份已绑定其他系统账号", 409)
     except RuntimeError:
+        if created_user:
+            _safe_delete_user(db, user_id)
         return err(40901, "绑定冲突（并发写入），请稍后重试", 409)
 
     resp_data = {

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pymongo import MongoClient
@@ -131,7 +131,7 @@ class MongoStorage(BaseStorage):
         doc = dict(record)
 
         # 额外补充服务器接收时间（UTC）
-        doc["ingested_at"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        doc["ingested_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
         # 插入一条文档
         self._collection.insert_one(doc)

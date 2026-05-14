@@ -120,7 +120,7 @@ def list_family_members(db, user_id: str) -> dict:
     members = [
         {
             "user_id": row["user_id"],
-            "nickname": users.get(row["user_id"], {}).get("nickname"),
+            "nickname": users.get(row["user_id"], {}).get("nickname") or f"用户{row['user_id'][:6]}",
             "role": row.get("role", "member"),
         }
         for row in rows
