@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \"import flask; print\\('Flask version:', flask.__version__\\)\")"
+      "Bash(python -c \"import flask; print\\('Flask version:', flask.__version__\\)\")",
+      "Bash(python app.py)",
+      "Bash(curl -s http://127.0.0.1:5000/api/v1/me)",
+      "Bash(python -m flask_server.app)",
+      "Bash(pip install *)",
+      "Bash(mysql --version)",
+      "Bash(sc query *)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(where mysqld *)",
+      "Bash(netstat -ano)",
+      "Bash(where mongod *)"
     ]
   }
 }
