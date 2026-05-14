@@ -6,13 +6,13 @@
 
 ## 1) Docker Compose 启动（在 `C_end_Simulator` 下）
 ```bash
-cd /home/runner/work/PetNode/PetNode/C_end_Simulator
+cd /path/to/PetNode/C_end_Simulator
 docker compose up -d
 ```
 
 ## 2) Nginx 反向代理配置
 仓库内配置文件：
-- `/home/runner/work/PetNode/PetNode/deploy/nginx/pppetnode.com.conf`
+- `/path/to/PetNode/deploy/nginx/pppetnode.com.conf`
 
 部署到服务器时，建议放置到：
 - `/etc/nginx/conf.d/pppetnode.com.conf`
