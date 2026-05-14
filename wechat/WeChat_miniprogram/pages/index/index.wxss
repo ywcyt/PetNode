@@ -1,0 +1,403 @@
+/* ================= 基础外层容器 ================= */
+/* 占满整个屏幕，并使用 Flex 竖向排列 */
+.app-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f8f8f8;
+}
+
+/* 核心滑动区域，撑满除底部导航外的所有空间 */
+.main-swiper {
+  flex: 1; 
+  width: 100%;
+}
+
+/* ================= 首页基础样式 ================= */
+.home-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 180rpx; 
+  /* 加上过渡动画，如果跨越早晚6点，背景色会丝滑渐变，不会闪烁 */
+  transition: all 0.8s ease; 
+}
+
+/* ================= ☀️ 白天主题 (6:00 - 17:59) ================= */
+.day-theme {
+  /* 经典的蓝天渐变，从天蓝渐变到云朵白，最后融入底层灰白 */
+  background: linear-gradient(to bottom, #87CEFA 0%, #E0F6FF 30%, #f8f8f8 100%);
+}
+
+.day-theme .page-title {
+  color: #1a1a1a; /* 白天字体纯黑 */
+}
+
+.day-theme .scan-btn {
+  color: #0277bd; /* 白天扫码按钮是深蓝色 */
+}
+
+/* ================= 🌙 黑夜主题 (18:00 - 5:59) ================= */
+.night-theme .home-page {
+  background: 
+    radial-gradient(3rpx 3rpx at 80rpx 100rpx, #ffffff, transparent),
+    radial-gradient(2rpx 2rpx at 220rpx 60rpx, rgba(255,255,255,0.8), transparent),
+    radial-gradient(4rpx 4rpx at 380rpx 180rpx, #ffffff, transparent),
+    radial-gradient(2rpx 2rpx at 520rpx 80rpx, rgba(255,255,255,0.5), transparent),
+    radial-gradient(3rpx 3rpx at 680rpx 150rpx, #ffffff, transparent),
+    radial-gradient(2rpx 2rpx at 150rpx 280rpx, rgba(255,255,255,0.7), transparent),
+    radial-gradient(3rpx 3rpx at 580rpx 320rpx, #ffffff, transparent),
+    linear-gradient(to bottom, #050914 0%, #121d33 60%, #1a283e 100%);
+}
+.night-theme .page-title { color: #ffffff; }
+.night-theme .scan-btn { color: #81d4fa; }
+.night-theme .avatar {
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 20rpx rgba(255, 255, 255, 0.2); 
+}
+
+/* 🌙 重点：黑夜主题下的底部导航栏变色魔法 */
+.night-theme .custom-tab-bar {
+  background-color: #1a283e; /* 与星空渐变的底部颜色一模一样，实现无缝衔接 */
+  border-top-color: #121d33; /* 把顶部的分割线调成深暗色 */
+}
+
+/* 🌙 夜晚未选中的文字和图标稍微调暗，不抢戏 */
+.night-theme .tab-text {
+  color: #666677;
+}
+
+/* 🌙 夜晚选中的高亮文字，从绿色变成星空蓝，完美契合夜色 */
+.night-theme .tab-item.active .tab-text {
+  color: #81d4fa; 
+}
+/* ================= 苹果风头部布局 ================= */
+.header-bar {
+  display: flex;
+  justify-content: space-between; /* 让标题在左，头像在右 */
+  align-items: flex-end; /* 底部对齐，让大标题的底线和头像的底线平齐，看起来更舒服 */
+  padding: 0 40rpx;
+  margin-bottom: 50rpx; /* 距离下方卡片拉开距离 */
+}
+
+/* 左侧标题区域组 */
+.header-left {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 扫码按钮样式 */
+.scan-btn {
+  font-size: 26rpx;
+  color: #2b8a53; /* 用深绿色，与淡绿色背景呼应但不刺眼 */
+  font-weight: bold;
+  margin-bottom: 10rpx; /* 和下方的大标题稍微隔开一点 */
+}
+
+/* 苹果风极简大标题 */
+.page-title {
+  font-size: 60rpx; /* 字体加大，气场全开 */
+  font-weight: 800; /* 加粗 */
+  color: #1a1a1a; /* 接近纯黑的深色，更有现代质感 */
+  line-height: 1; /* 消除默认行高导致的留白 */
+}
+
+/* 头像样式 */
+.avatar {
+  width: 90rpx; /* 头像稍微调大一点，匹配大标题的体量 */
+  height: 90rpx;
+  border-radius: 50%; /* 圆形 */
+  border: 4rpx solid #ffffff; /* 加一圈纯白色的边框，显得很精致 */
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.08); /* 加一点悬浮阴影，增强立体感 */
+}
+
+/* ================= 智能设备网格布局 ================= */
+/* Grid 布局：完美的一排两个卡片 */
+.device-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* 两列，每列占一半 */
+  gap: 30rpx; /* 卡片与卡片之间的缝隙 */
+  padding: 0 40rpx;
+}
+
+/* 单个设备卡片 */
+.device-card {
+  background: rgba(255, 255, 255, 0.85); /* 半透明白 */
+  backdrop-filter: blur(10px); /* 磨砂毛玻璃效果 */
+  border-radius: 32rpx; /* 大圆角 */
+  padding: 30rpx;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 220rpx;
+  box-shadow: 0 8rpx 20rpx rgba(0, 0, 0, 0.03); /* 淡淡的底阴影 */
+}
+
+/* 卡片内部上半部排版 */
+.card-top {
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* 狗头 Emoji 大小 */
+.dog-avatar-mock {
+  font-size: 60rpx; 
+}
+
+/* 卡片内部下半部排版 */
+.card-bottom {
+  display: flex;
+  flex-direction: column;
+}
+
+.dog-name {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #333333;
+  margin-bottom: 8rpx;
+}
+
+.dog-status {
+  font-size: 24rpx;
+  color: #888888;
+}
+
+/* ================= 占位白板页面样式 ================= */
+.blank-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 36rpx;
+  color: #999999;
+}
+
+/* ================= 底部自定义导航栏 ================= */
+.custom-tab-bar {
+  height: 120rpx;
+  background-color: #ffffff;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom); 
+  border-top: 1rpx solid #f0f0f0;
+  /* 👇 加上这行：让背景色切换时有丝滑的渐变效果 */
+  transition: all 0.8s ease; 
+}
+
+/* 底部单个球球容器 */
+.tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100rpx;
+  transition: all 0.3s; /* 点击动画过渡 */
+}
+
+/* 未选中的灰色图标 */
+.tab-icon {
+  font-size: 48rpx;
+  margin-bottom: 6rpx;
+  filter: grayscale(100%); 
+  opacity: 0.5;
+}
+
+/* 未选中的灰色文字 */
+.tab-text {
+  font-size: 20rpx;
+  color: #999999;
+}
+
+/* ==== 点击高亮时的状态覆盖 ==== */
+/* 图标变彩色并轻微放大 */
+.tab-item.active .tab-icon {
+  filter: grayscale(0%); 
+  opacity: 1;
+  transform: scale(1.1); 
+}
+
+/* 文字变绿加粗 */
+.tab-item.active .tab-text {
+  color: #07c160;
+  font-weight: bold;
+}
+
+/* ================= 我的页面 ================= */
+.profile-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-top: 180rpx;
+  align-items: center;
+}
+
+.profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 60rpx;
+}
+
+.profile-avatar {
+  width: 140rpx;
+  height: 140rpx;
+  border-radius: 50%;
+  border: 4rpx solid #ffffff;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.1);
+  margin-bottom: 20rpx;
+}
+
+.profile-nickname {
+  font-size: 40rpx;
+  font-weight: bold;
+  color: #1a1a1a;
+  margin-bottom: 10rpx;
+}
+
+.profile-id {
+  font-size: 24rpx;
+  color: #999999;
+}
+
+.profile-menu {
+  width: 100%;
+  padding: 0 40rpx;
+  margin-bottom: 40rpx;
+}
+
+.menu-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 30rpx 20rpx;
+  font-size: 30rpx;
+  color: #333333;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.menu-item .arrow {
+  font-size: 36rpx;
+  color: #cccccc;
+}
+
+.logout-section {
+  width: 100%;
+  padding: 0 40rpx;
+}
+
+.logout-btn {
+  width: 100%;
+  padding: 26rpx 0;
+  text-align: center;
+  font-size: 30rpx;
+  color: #ff3b30;
+  background: rgba(255, 59, 48, 0.06);
+  border-radius: 16rpx;
+}
+
+/* ================= 空状态 ================= */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 120rpx;
+}
+
+.empty-icon {
+  font-size: 100rpx;
+  margin-bottom: 30rpx;
+  opacity: 0.5;
+}
+
+.empty-text {
+  font-size: 30rpx;
+  color: #888888;
+  margin-bottom: 12rpx;
+}
+
+.empty-hint {
+  font-size: 24rpx;
+  color: #bbbbbb;
+}
+
+/* ================= 绑定设备弹窗 ================= */
+.bind-modal-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.bind-modal {
+  width: 560rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  padding: 40rpx;
+  display: flex;
+  flex-direction: column;
+}
+
+.bind-modal-title {
+  font-size: 34rpx;
+  font-weight: bold;
+  color: #1a1a1a;
+  text-align: center;
+  margin-bottom: 10rpx;
+}
+
+.bind-modal-device {
+  font-size: 24rpx;
+  color: #999999;
+  text-align: center;
+  margin-bottom: 30rpx;
+}
+
+.bind-input {
+  width: 100%;
+  height: 80rpx;
+  background: #f5f5f5;
+  border-radius: 12rpx;
+  padding: 0 20rpx;
+  font-size: 28rpx;
+  margin-bottom: 16rpx;
+  box-sizing: border-box;
+}
+
+.bind-modal-btns {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10rpx;
+}
+
+.bind-btn {
+  width: 220rpx;
+  height: 80rpx;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  border-radius: 40rpx;
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+.bind-btn.cancel {
+  background: #f5f5f5;
+  color: #666666;
+}
+
+.bind-btn.confirm {
+  background: #07c160;
+  color: #ffffff;
+}

@@ -1,0 +1,54 @@
+<scroll-view class="detail-container" scroll-y="true">
+  
+  <view class="custom-back-btn" bindtap="goBack">
+    <view class="back-arrow"></view>
+  </view>
+
+  <view class="map-section">
+    <map 
+      class="realtime-map" 
+      longitude="{{longitude}}" 
+      latitude="{{latitude}}" 
+      scale="15" 
+      markers="{{markers}}"
+      show-location>
+    </map>
+  </view>
+
+  <view class="health-section">
+    
+    <view class="chart-card" wx:for="{{healthCharts}}" wx:key="id">
+      
+      <view class="card-header">
+        <text class="chart-title">{{item.title}}</text>
+        <view class="average-data">
+          <text class="avg-number">{{item.average}}</text>
+          <text class="avg-unit">{{item.unit}}</text>
+        </view>
+        <text class="date-range">{{item.dateRange || '---'}}</text>
+      </view>
+
+      <view class="css-chart-box">
+        <view class="bar-wrapper" wx:for="{{item.dataPoints}}" wx:for-item="point" wx:key="*this">
+          <view class="bar" style="height:{{point}}%;background-color:{{item.color}};"></view>
+        </view>
+        <view class="x-axis">
+          <text>五</text><text>六</text><text>日</text><text>一</text><text>二</text><text>三</text><text>四</text>
+        </view>
+      </view>
+
+      <view class="summary-box {{item.isExpanded ? 'expanded' : ''}}" bindtap="toggleSummary" data-index="{{index}}">
+        <view class="summary-header">
+          <text class="summary-icon" style="color: {{item.color}}">●</text>
+          <text class="summary-label">提要</text>
+          <text class="toggle-btn">{{item.isExpanded ? '收起' : '全部显示'}}</text>
+        </view>
+        <text class="summary-content">{{item.summary}}</text>
+      </view>
+
+    </view>
+    
+    <view style="height: 100rpx;"></view>
+  </view>
+
+</scroll-view>

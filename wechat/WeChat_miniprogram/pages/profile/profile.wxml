@@ -1,0 +1,73 @@
+<view class="profile-container">
+
+  <!-- 用户头像与信息 -->
+  <view class="user-card">
+    <image class="user-avatar" src="{{userInfo.avatar_url || '/images/DefaultAvatar.png'}}" mode="aspectFill"></image>
+    <view class="user-info" wx:if="{{!editing}}">
+      <text class="user-name">{{userInfo.nickname || '未设置昵称'}}</text>
+      <text class="user-id">ID: {{userInfo.user_id || '---'}}</text>
+    </view>
+    <!-- 编辑模式 -->
+    <view class="edit-form" wx:if="{{editing}}">
+      <input class="edit-input" placeholder="昵称" value="{{editForm.nickname}}" data-field="nickname" bindinput="onEditInput" />
+      <input class="edit-input" placeholder="头像URL" value="{{editForm.avatar_url}}" data-field="avatar_url" bindinput="onEditInput" />
+    </view>
+    <view class="edit-btn" bindtap="{{editing ? 'saveProfile' : 'toggleEdit'}}">
+      {{editing ? '保存' : '编辑'}}
+    </view>
+  </view>
+
+  <!-- 家庭管理 -->
+  <view class="section">
+    <text class="section-title">家庭管理</text>
+
+    <view class="member-list" wx:if="{{familyMembers.length > 0}}">
+      <view class="member-item" wx:for="{{familyMembers}}" wx:key="user_id">
+        <text class="member-name">{{item.nickname}} <text class="member-role">({{item.role}})</text></text>
+        <view class="member-remove" data-user-id="{{item.user_id}}" bindtap="removeMember">
+          {{item.user_id === userInfo.user_id ? '退出' : '移除'}}
+        </view>
+      </view>
+    </view>
+
+    <view class="empty-hint" wx:if="{{familyMembers.length === 0}}">
+      <text>尚未加入家庭组</text>
+    </view>
+
+    <view class="family-actions">
+      <view class="action-btn" bindtap="createFamily">创建家庭组</view>
+      <view class="action-btn" bindtap="generateInvite">生成邀请码</view>
+      <view class="action-btn" bindtap="showJoinInput">加入家庭组</view>
+    </view>
+  </view>
+
+  <!-- 退出登录 -->
+  <view class="logout-section">
+    <view class="logout-btn" bindtap="handleLogout">退出登录</view>
+  </view>
+
+  <!-- 邀请码弹窗 -->
+  <view class="modal-mask" wx:if="{{showInviteModal}}" bindtap="closeInviteModal">
+    <view class="modal-box" catchtap="">
+      <text class="modal-title">邀请码</text>
+      <text class="invite-token">{{inviteToken}}</text>
+      <view class="modal-btns">
+        <view class="modal-btn" bindtap="copyInviteToken">复制邀请码</view>
+        <view class="modal-btn cancel" bindtap="closeInviteModal">关闭</view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 加入家庭弹窗 -->
+  <view class="modal-mask" wx:if="{{showJoinModal}}" bindtap="closeJoinModal">
+    <view class="modal-box" catchtap="">
+      <text class="modal-title">输入邀请码</text>
+      <input class="modal-input" placeholder="邀请码" value="{{joinToken}}" bindinput="onJoinInput" />
+      <view class="modal-btns">
+        <view class="modal-btn" bindtap="joinFamily">确认加入</view>
+        <view class="modal-btn cancel" bindtap="closeJoinModal">取消</view>
+      </view>
+    </view>
+  </view>
+
+</view>

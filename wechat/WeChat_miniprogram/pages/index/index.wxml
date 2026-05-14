@@ -1,0 +1,112 @@
+<view class="app-container {{isDaytime ? 'day-theme' : 'night-theme'}}">
+
+<swiper class="main-swiper" current="{{currentTab}}" bindchange="onSwiperChange">
+
+  <swiper-item>
+    <view class="home-page">
+
+      <view class="header-bar">
+        <view class="header-left">
+          <view class="scan-btn" bindtap="scanDevice">[-] 扫码添加设备</view>
+          <view class="page-title">全部设备</view>
+        </view>
+        <image class="avatar" src="/images/DefaultAvatar.png" mode="aspectFill"></image>
+      </view>
+
+      <view class="device-grid" wx:if="{{devices.length > 0}}">
+        <view class="device-card" wx:for="{{devices}}" wx:key="id" data-id="{{item.id}}" bindtap="goToDetail">
+          <view class="card-top">
+            <view class="dog-avatar-mock">{{item.avatar}}</view>
+          </view>
+          <view class="card-bottom">
+            <text class="dog-name">{{item.name}}</text>
+            <text class="dog-status">{{item.status}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="empty-state" wx:if="{{devices.length === 0}}">
+        <view class="empty-icon">🐶</view>
+        <text class="empty-text">还没有绑定设备</text>
+        <text class="empty-hint">点击上方扫码按钮添加</text>
+      </view>
+
+    </view>
+  </swiper-item>
+
+  <swiper-item>
+    <view class="blank-page">健康页面开发中...</view>
+  </swiper-item>
+
+  <swiper-item>
+    <view class="blank-page">设置页面开发中...</view>
+  </swiper-item>
+
+  <swiper-item>
+    <view class="profile-page">
+      <view class="profile-header">
+        <image class="profile-avatar" src="{{userInfo.avatar_url || '/images/DefaultAvatar.png'}}" mode="aspectFill"></image>
+        <text class="profile-nickname">{{userInfo.nickname || '未设置昵称'}}</text>
+        <text class="profile-id">ID: {{userInfo.user_id || '---'}}</text>
+      </view>
+
+      <view class="profile-menu">
+        <view class="menu-item" bindtap="editProfile">
+          <text>编辑资料</text>
+          <text class="arrow">›</text>
+        </view>
+        <view class="menu-item" bindtap="manageFamily">
+          <text>家庭管理</text>
+          <text class="arrow">›</text>
+        </view>
+        <view class="menu-item" bindtap="manageDevices">
+          <text>设备管理</text>
+          <text class="arrow">›</text>
+        </view>
+      </view>
+
+      <view class="logout-section">
+        <view class="logout-btn" bindtap="handleLogout">
+          <text>退出登录</text>
+        </view>
+      </view>
+    </view>
+  </swiper-item>
+
+</swiper>
+
+<view class="custom-tab-bar">
+  <view class="tab-item {{currentTab == 0 ? 'active' : ''}}" data-index="0" bindtap="switchTab">
+    <view class="tab-icon">🐶</view>
+    <text class="tab-text">首页</text>
+  </view>
+  <view class="tab-item {{currentTab == 1 ? 'active' : ''}}" data-index="1" bindtap="switchTab">
+    <view class="tab-icon">📈</view>
+    <text class="tab-text">健康</text>
+  </view>
+  <view class="tab-item {{currentTab == 2 ? 'active' : ''}}" data-index="2" bindtap="switchTab">
+    <view class="tab-icon">⚙️</view>
+    <text class="tab-text">设置</text>
+  </view>
+  <view class="tab-item {{currentTab == 3 ? 'active' : ''}}" data-index="3" bindtap="switchTab">
+    <view class="tab-icon">🐾</view>
+    <text class="tab-text">我的</text>
+  </view>
+</view>
+
+<!-- 绑定设备弹窗 -->
+<view class="bind-modal-mask" wx:if="{{showBindModal}}" bindtap="closeBindModal">
+  <view class="bind-modal" catchtap="">
+    <text class="bind-modal-title">绑定新设备</text>
+    <text class="bind-modal-device">设备ID: {{scannedDeviceId}}</text>
+    <input class="bind-input" placeholder="宠物名称 *" value="{{bindForm.pet_name}}" data-field="pet_name" bindinput="onBindInput" />
+    <input class="bind-input" placeholder="品种" value="{{bindForm.breed}}" data-field="breed" bindinput="onBindInput" />
+    <input class="bind-input" placeholder="体重 (kg)" type="digit" value="{{bindForm.weight}}" data-field="weight" bindinput="onBindInput" />
+    <view class="bind-modal-btns">
+      <view class="bind-btn cancel" bindtap="closeBindModal">取消</view>
+      <view class="bind-btn confirm" bindtap="submitBind">确认绑定</view>
+    </view>
+  </view>
+</view>
+
+</view>
