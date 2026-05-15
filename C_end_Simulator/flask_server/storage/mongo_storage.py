@@ -168,6 +168,18 @@ class MongoStorage(BaseStorage):
         )
         return [dict(document) for document in cursor]
 
+    def get_active_devices(self, limit: int = 4) -> list[dict]:
+        """返回当前活跃设备列表（按最近插入顺序排序，确保只显示当下在用设备）。"""
+        cursor = self._collection.aggregate([
+            {"$group": {"_id": "$device_id", "count": {"$sum": 1}, "last_id": {"$max": "$_id"}}},
+            {"$sort": {"last_id": -1}},
+            {"$limit": limit}
+        ])
+        return [
+            {"device_id": doc["_id"], "count": doc["count"]}
+            for doc in cursor
+        ]
+
     def close(self) -> None:
         """关闭 MongoClient 连接。"""
         self._client.close()

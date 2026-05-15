@@ -42,9 +42,9 @@ class DogProfile:
     home_lng: float = 106.45
 
     def __post_init__(self) -> None:
-        # 如果没有指定 dog_id，则自动生成一个 12 位的十六进制唯一标识
+        # dog_id 由 random_profile() 通过 rng 确定性生成，确保 seed 固定后设备ID不变
         if not self.dog_id:
-            self.dog_id = uuid.uuid4().hex[:12]
+            self.dog_id = uuid.uuid4().hex[:12]  # fallback，正常不应走到这里
 
     # ---------- 汇总 trait 提供的修正 ----------
     # 以下 property 将所有 trait 对基线指标的影响进行汇总：
@@ -119,7 +119,11 @@ class DogProfile:
         else:
             traits = []
 
+        # 用 rng 确定性生成 12 位 dog_id，确保 seed 固定后设备 ID 不变
+        dog_id = "".join(f"{rng.integers(0, 16):x}" for _ in range(12))
+
         return DogProfile(
+            dog_id=dog_id,
             breed_size=str(breed),
             age_stage=str(age),
             traits=traits,

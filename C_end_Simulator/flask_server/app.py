@@ -483,6 +483,63 @@ def query_profile_v1():
     return _handle_query_request(source_override="mysql", kind_override="profile")
 
 
+@app.route("/demo/qrcodes")
+def demo_qrcodes():
+    """动态生成二维码演示页面，设备 ID 从 MongoDB 实时读取"""
+    try:
+        latest = mongo_storage.get_active_devices(4)
+    except Exception:
+        latest = []
+
+    cards_html = ""
+    for i, d in enumerate(latest):
+        did = d["device_id"]
+        cards_html += f"""<div class="card">
+  <h3>{['🐕','🐩','🐕‍🦺','🦮'][i]} 设备 {i+1}</h3>
+  <p class="id">{did}</p>
+  <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=petnode:device:{did}" alt="QR">
+  <p class="hint"><code>petnode:device:{did}</code></p>
+  <p class="hint">记录数: {d['count']}</p>
+</div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PetNode 扫码绑定</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:-apple-system,sans-serif;background:#f5f5f5;padding:20px}}
+h1{{text-align:center;color:#333;margin-bottom:10px}}
+.sub{{text-align:center;color:#888;margin-bottom:10px;font-size:13px}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;max-width:900px;margin:0 auto}}
+.card{{background:#fff;border-radius:16px;padding:20px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.05)}}
+.card h3{{font-size:16px;margin-bottom:4px}}
+.card .id{{font-size:11px;color:#aaa;margin-bottom:10px;word-break:break-all}}
+.card img{{width:180px;height:180px;border:1px dashed #ddd;border-radius:8px}}
+.card .hint{{margin-top:8px;font-size:12px;color:#888}}
+.card .hint code{{background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:11px}}
+.steps{{max-width:900px;margin:30px auto;background:#fff;border-radius:16px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.05)}}
+.steps h2{{font-size:18px;margin-bottom:10px}}
+.steps ol{{padding-left:20px}}
+.steps li{{padding:6px 0;color:#555;line-height:1.6}}
+</style></head>
+<body>
+<h1>🐾 PetNode 扫码绑定</h1>
+<p class="sub">实时数据 · 自动刷新 · 页面刷新可更新设备列表</p>
+<div class="grid">{cards_html}</div>
+<div class="steps">
+<h2>📋 操作步骤</h2>
+<ol>
+<li>微信开发者工具编译小程序</li>
+<li>首页点击 <strong>「[-] 扫码添加」</strong></li>
+<li>扫描上方对应设备的二维码</li>
+<li>点击弹窗<strong>「绑定」</strong></li>
+<li>新设备出现在首页，点击可查看实时数据</li>
+</ol>
+</div>
+</body></html>""", 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
 # ────────────────── 启动入口 ──────────────────
 
 # 当直接运行 python app.py 时执行（而不是被 import 时）

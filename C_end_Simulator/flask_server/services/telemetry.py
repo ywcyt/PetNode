@@ -243,10 +243,12 @@ def get_respiration_series(
         db["received_records"].find(
             query,
             {"_id": 0, "timestamp": 1, "resp_rate": 1},
-            sort=[("timestamp", 1)],
+            sort=[("timestamp", -1)],
             limit=limit,
         )
     )
+
+    records.reverse()
 
     points = [
         {"ts": r["timestamp"], "value_bpm": r["resp_rate"]}
@@ -354,10 +356,12 @@ def get_heart_rate_series(
         db["received_records"].find(
             query,
             {"_id": 0, "timestamp": 1, "heart_rate": 1},
-            sort=[("timestamp", 1)],
+            sort=[("timestamp", -1)],
             limit=limit,
         )
     )
+
+    records.reverse()
 
     points = [
         {"ts": r["timestamp"], "value_bpm": r["heart_rate"]}
@@ -491,10 +495,11 @@ def get_temperature_series(
         db["received_records"].find(
             query,
             {"_id": 0, "timestamp": 1, "temperature": 1},
-            sort=[("timestamp", 1)],
+            sort=[("timestamp", -1)],
             limit=limit,
         )
     )
+    records.reverse()
     points = [
         {"ts": r["timestamp"], "value_celsius": r["temperature"]}
         for r in records

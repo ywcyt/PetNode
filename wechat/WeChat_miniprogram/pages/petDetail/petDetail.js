@@ -21,7 +21,8 @@ Page({
     if (!petId) return;
     wx.getLocation({
       type: 'gcj02',
-      success: (res) => this.setData({ latitude: res.latitude, longitude: res.longitude })
+      success: (res) => this.setData({ latitude: res.latitude, longitude: res.longitude }),
+      fail: () => {} // 模拟器中 GPS 不可用，静默忽略
     });
     this.fetchAllData(petId);
   },
@@ -46,7 +47,9 @@ Page({
       const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
       const patches = { lastFetchTime: timeStr };
       this.applyPatches(patches, summary, hrSeries, respSeries, tempSeries);
+      console.log('[petDetail] setData patches:', JSON.stringify({ hrAvg: patches.hrAvg, respAvg: patches.respAvg, tempAvg: patches.tempAvg, hrDpLen: patches.hrDp.length, time: timeStr }));
       this.setData(patches);
+      console.log('[petDetail] data after setData:', JSON.stringify({ hrAvg: this.data.hrAvg, respAvg: this.data.respAvg, tempAvg: this.data.tempAvg, hrDpLen: this.data.hrDp.length }));
 
       if (location && location.lat != null) {
         this.setData({
