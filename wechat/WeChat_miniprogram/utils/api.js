@@ -1,36 +1,4 @@
-/**
- * utils/api.js
- * PetNode 全局网络请求封装
- *
- * 后端统一响应格式（envelope）：
- *   成功: { code: 0, message: "ok", data: {...}, server_time: "..." }
- *   失败: { code: <错误码>, message: "<描述>", data: null, server_time: "..." }
- *
- * 本模块自动解包 envelope：Promise resolve 时直接返回 data 字段，
- * 业务 code != 0 时走 reject。
- */
-
-/**
- * 后端地址，根据小程序运行环境自动切换。
- *
- * 微信小程序要求正式版必须配置 https 合法域名（在公众平台 → 开发管理 → 服务器域名）。
- * 开发阶段可使用 http://127.0.0.1:5000，需在开发者工具中勾选「不校验合法域名」。
- */
-const HOSTS = {
-  develop: 'http://127.0.0.1:5000',
-  trial:    'http://127.0.0.1:5000',   // 体验版 — 按需改为测试服务器地址
-  release:  'https://your-domain.com', // 正式版 — 上线前替换为真实域名
-};
-
-function resolveBaseUrl() {
-  try {
-    const info = wx.getAccountInfoSync();
-    const env = (info && info.miniProgram && info.miniProgram.envVersion) || 'develop';
-    return HOSTS[env] || HOSTS.develop;
-  } catch (_) {
-    return HOSTS.develop;
-  }
-}
+const BASE_URL = 'http://8.156.95.140:5000/api/v1';
 
 const BASE_URL = resolveBaseUrl();
 
