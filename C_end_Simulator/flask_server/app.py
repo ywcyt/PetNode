@@ -485,12 +485,78 @@ def query_records_by_device_v1(device_key: str):
     return _handle_query_request(default_device_key=device_key)
 
 
+def _build_mongo_profile():
+    """从 MongoDB 构建设备档案：结合 user_pets/pets 的绑定信息和 received_records 的最新遥测。"""
+    try:
+        col = mongo_storage._collection
+        db = col.database
+        # 最近 500 条遥测中活跃的设备
+        pipeline = [
+            {"$sort": {"_id": -1}},
+            {"$limit": 500},
+            {"$group": {
+                "_id": "$device_id",
+                "count": {"$sum": 1},
+                "latest_hr": {"$first": "$heart_rate"},
+                "latest_behavior": {"$first": "$behavior"},
+                "latest_temp": {"$first": "$temperature"},
+                "latest_rr": {"$first": "$resp_rate"},
+                "latest_steps": {"$first": "$steps"},
+                "latest_battery": {"$first": "$battery"},
+                "latest_lat": {"$first": "$gps_lat"},
+                "latest_lng": {"$first": "$gps_lng"},
+                "latest_ts": {"$first": "$timestamp"},
+            }},
+            {"$sort": {"count": -1}},
+        ]
+        active = list(col.aggregate(pipeline))
+    except Exception:
+        active = []
+
+    # 从 user_pets / pets 获取宠物名和用户绑定
+    pet_info = {}
+    try:
+        for p in db["user_pets"].find({}, {"_id": 0, "device_id": 1, "pet_name": 1, "user_id": 1}):
+            pet_info[p["device_id"]] = {"pet_name": p.get("pet_name", ""), "user_id": p.get("user_id", "")}
+    except Exception:
+        pass
+    try:
+        for p in db["pets"].find({}, {"_id": 0, "device_id": 1, "pet_name": 1, "user_id": 1}):
+            if p["device_id"] not in pet_info:
+                pet_info[p["device_id"]] = {"pet_name": p.get("pet_name", ""), "user_id": p.get("user_id", "")}
+    except Exception:
+        pass
+
+    devices = []
+    for d in active:
+        did = d["_id"]
+        info = pet_info.get(did, {})
+        devices.append({
+            "device_sn": did,
+            "pet_name": info.get("pet_name", ""),
+            "user_id": info.get("user_id", ""),
+            "is_bound": bool(info.get("user_id")),
+            "record_count": d.get("count", 0),
+            "latest_heart_rate": d.get("latest_hr"),
+            "latest_behavior": d.get("latest_behavior"),
+            "latest_temperature": d.get("latest_temp"),
+            "latest_resp_rate": d.get("latest_rr"),
+            "latest_steps": d.get("latest_steps"),
+            "latest_battery": d.get("latest_battery"),
+            "latest_gps_lat": d.get("latest_lat"),
+            "latest_gps_lng": d.get("latest_lng"),
+            "latest_timestamp": str(d.get("latest_ts", ""))[:19],
+        })
+
+    return {"devices": devices}
+
+
 @app.route("/api/profile", methods=["GET"])
 def query_profile():
-    """查询 MySQL 中的固定档案信息（用户、设备、特质、事件字典）。"""
+    """查询设备档案信息（支持 Mongo 和 MySQL）。"""
     source = request.args.get("source", "mysql").strip().lower()
-    if source != "mysql":
-        return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
+    if source == "mongo":
+        return _build_query_response("mongo", "profile", _build_mongo_profile())
     return _handle_query_request(source_override="mysql", kind_override="profile")
 
 
@@ -498,8 +564,8 @@ def query_profile():
 def query_profile_v1():
     """兼容文档中的 v1 profile 入口。"""
     source = request.args.get("source", "mysql").strip().lower()
-    if source != "mysql":
-        return jsonify({"status": "error", "message": "profile 只支持 source=mysql"}), 400
+    if source == "mongo":
+        return _build_query_response("mongo", "profile", _build_mongo_profile())
     return _handle_query_request(source_override="mysql", kind_override="profile")
 
 

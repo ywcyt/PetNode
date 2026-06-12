@@ -230,6 +230,25 @@
     }
     .right-panel-header h3 { font-size: 15px; font-weight: 700; letter-spacing: 2px; color: var(--text-secondary); }
     .right-panel-status { font-size: 12px; color: var(--accent-green); font-family: var(--font-mono); }
+    /* Device selector */
+    .device-selector-wrap { padding: 12px 24px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .device-selector-wrap label { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .device-selector-wrap select {
+      flex: 1; background: #1c2333; border: 1px solid var(--border-subtle); border-radius: 4px;
+      color: var(--text-primary); padding: 6px 10px; font-size: 12px; font-family: var(--font-mono);
+      outline: none; cursor: pointer;
+    }
+    .device-selector-wrap select:focus { border-color: var(--border-active); }
+    /* Device detail panel */
+    .device-detail-panel { border-bottom: 1px solid var(--border-subtle); flex-shrink: 0; }
+    .device-detail-header { padding: 14px 24px 0; display: flex; justify-content: space-between; align-items: center; }
+    .device-detail-header h4 { font-size: 13px; font-weight: 600; color: var(--text-primary); font-family: var(--font-mono); }
+    .device-detail-header .dev-label { font-size: 10px; color: var(--accent-cyan); background: rgba(26,115,232,0.1); padding: 2px 8px; border-radius: 3px; }
+    .device-info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 12px 24px; }
+    .device-info-item { background: #1c2333; border-radius: 6px; padding: 10px; text-align: center; }
+    .device-info-item .dv { font-size: 18px; font-weight: 700; font-family: var(--font-mono); }
+    .device-info-item .dl { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+    .device-chart-box { width: 100%; height: 240px; margin: 0 0 16px; }
     .right-panel-scroll {
       flex: 1; overflow-y: auto; padding: 0;
     }
@@ -399,6 +418,64 @@
         <h3>◇ 数据指标面板</h3>
         <span class="right-panel-status" ref="panelStatus">系统就绪</span>
       </div>
+
+      <!-- Device Selector -->
+      <div class="device-selector-wrap">
+        <label>📱 设备:</label>
+        <select v-model="selectedDeviceId" @change="onDeviceChange">
+          <option value="">-- 全部设备总览 --</option>
+          <option v-for="d in liveDevices" :key="d.deviceId" :value="d.deviceId">
+            {{ d.petName ? d.petName + ' (' + d.deviceId + ')' : d.deviceId }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Device Detail Panel -->
+      <div class="device-detail-panel" v-if="selectedDeviceId && deviceDetail">
+        <div class="device-detail-header">
+          <h4>{{ selectedDeviceId }}</h4>
+          <div style="display:flex;gap:8px;">
+            <span class="dev-label">最近 {{ deviceRecords.length }} 条</span>
+            <span v-if="deviceLoading" style="font-size:11px;color:var(--text-muted);">加载中...</span>
+          </div>
+        </div>
+        <div class="device-info-grid">
+          <div class="device-info-item">
+            <div class="dv" :style="{color: hrColor}">{{ deviceDetail.heart_rate?.toFixed(0) || '--' }}</div>
+            <div class="dl">心率 bpm</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" :style="{color: tempColor}">{{ deviceDetail.temperature?.toFixed(1) || '--' }}</div>
+            <div class="dl">体温 °C</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" :style="{color: rrColor}">{{ deviceDetail.resp_rate?.toFixed(1) || '--' }}</div>
+            <div class="dl">呼吸 次/分</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" style="color:#8b949e;">{{ deviceDetail.steps || '--' }}</div>
+            <div class="dl">步数</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" style="color:#f0c060;">{{ deviceDetail.battery || '--' }}%</div>
+            <div class="dl">电量</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" style="color:#8b949e;">{{ deviceBehavior }}</div>
+            <div class="dl">行为</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" style="color:var(--font-mono);font-size:11px;">{{ deviceDetail.gps_lat?.toFixed(4) || '--' }}</div>
+            <div class="dl">纬度</div>
+          </div>
+          <div class="device-info-item">
+            <div class="dv" style="color:var(--font-mono);font-size:11px;">{{ deviceDetail.gps_lng?.toFixed(4) || '--' }}</div>
+            <div class="dl">经度</div>
+          </div>
+        </div>
+        <div class="device-chart-box" ref="deviceChartDom"></div>
+      </div>
+
       <div class="right-panel-scroll">
         <el-collapse v-model="activePanel" @change="onPanelChange">
           <el-collapse-item
@@ -471,7 +548,7 @@
 </script>
 
 <script type="module">
-import { createApp, ref, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { createApp, ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import ElementPlus from 'element-plus';
 import * as echarts from 'echarts';
 
@@ -889,6 +966,13 @@ const app = createApp({
     const backendChecking = ref(true);
     const liveDeviceCount = ref(0);
 
+    /* ── Per-device detail ── */
+    const selectedDeviceId = ref('');
+    const deviceRecords = ref([]);
+    const deviceLoading = ref(false);
+    const deviceChartDom = ref(null);
+    let deviceChart = null;
+
     const currentTime = ref('');
     const chatInput = ref('');
     const chatList = reactive([
@@ -921,6 +1005,92 @@ const app = createApp({
     function scrollChat() {
       const el = chatMessages.value;
       if (el) el.scrollTop = el.scrollHeight;
+    }
+
+    /* ── Per-device detail ── */
+    const deviceDetail = computed(() => {
+      const recs = deviceRecords.value;
+      return recs.length > 0 ? recs[recs.length - 1] : null;
+    });
+    const hrColor = computed(() => {
+      const hr = deviceDetail.value?.heart_rate;
+      if (hr == null) return '#8b949e';
+      return hr > 140 ? '#ff3b5c' : hr < 60 ? '#ff9100' : '#00e676';
+    });
+    const tempColor = computed(() => {
+      const t = deviceDetail.value?.temperature;
+      if (t == null) return '#8b949e';
+      return t > 39 ? '#ff3b5c' : t < 37.5 ? '#448aff' : '#00e676';
+    });
+    const rrColor = computed(() => {
+      const rr = deviceDetail.value?.resp_rate;
+      if (rr == null) return '#8b949e';
+      return rr > 30 ? '#ff3b5c' : rr < 10 ? '#ff9100' : '#00e676';
+    });
+    const deviceBehavior = computed(() => {
+      return behaviorToStatus(deviceDetail.value?.behavior);
+    });
+
+    let _deviceFetching = false;
+    async function fetchDeviceRecords(deviceId) {
+      if (_deviceFetching) return;  // prevent overlapping calls
+      _deviceFetching = true;
+      deviceLoading.value = true;
+      try {
+        const url = apiUrl(`/../devices/${deviceId}/records?source=mongo&limit=200`);
+        const res = await fetchJSON(url);
+        if (res && res.status === 'ok') {
+          deviceRecords.value = (res.data || []).reverse(); // oldest first for chart
+        } else {
+          deviceRecords.value = [];
+        }
+      } catch (e) {
+        console.warn('[PetNode] device fetch failed:', e);
+        deviceRecords.value = [];
+      } finally {
+        deviceLoading.value = false;
+        _deviceFetching = false;
+        nextTick(() => renderDeviceChart());
+      }
+    }
+
+    function renderDeviceChart() {
+      const dom = deviceChartDom.value;
+      if (!dom || dom.offsetParent === null) return;
+      if (deviceChart) { deviceChart.dispose(); deviceChart = null; }
+      const recs = deviceRecords.value;
+      if (!recs.length) return;
+
+      deviceChart = echarts.init(dom);
+      const times = recs.map(r => {
+        const t = r.timestamp || '';
+        return t.length > 16 ? t.substring(5, 16) : t;
+      });
+      deviceChart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: { trigger: 'axis', backgroundColor: 'rgba(22,27,34,0.97)', borderColor: '#1a73e840', textStyle: { color: '#e6edf3', fontSize: 11 } },
+        legend: { data: ['心率','体温','呼吸'], bottom: 0, textStyle: { color: '#8b949e', fontSize: 9 }, itemWidth: 14, itemHeight: 8 },
+        grid: { left: 12, right: 48, top: 8, bottom: 36 },
+        xAxis: { type: 'category', data: times, axisLabel: { color: '#5c6878', fontSize: 9, interval: Math.max(1, Math.floor(times.length / 6)) }, axisLine: { lineStyle: { color: '#ffffff10' } } },
+        yAxis: [
+          { type: 'value', name: 'bpm / °C', nameTextStyle: { color: '#5c6878', fontSize: 9 }, axisLabel: { color: '#5c6878', fontSize: 9 }, splitLine: { lineStyle: { color: '#ffffff08' } } },
+          { type: 'value', name: '次/分', nameTextStyle: { color: '#5c6878', fontSize: 9 }, axisLabel: { color: '#5c6878', fontSize: 9 }, splitLine: { show: false } },
+        ],
+        series: [
+          { name: '心率', type: 'line', data: recs.map(r => r.heart_rate), smooth: true, symbol: 'none', lineStyle: { color: '#ff3b5c', width: 1.5 } },
+          { name: '体温', type: 'line', data: recs.map(r => r.temperature), smooth: true, symbol: 'none', lineStyle: { color: '#ff9100', width: 1.5 } },
+          { name: '呼吸', type: 'line', yAxisIndex: 1, data: recs.map(r => r.resp_rate), smooth: true, symbol: 'none', lineStyle: { color: '#448aff', width: 1.5 } },
+        ],
+      });
+    }
+
+    function onDeviceChange() {
+      if (selectedDeviceId.value) {
+        fetchDeviceRecords(selectedDeviceId.value);
+      } else {
+        deviceRecords.value = [];
+        if (deviceChart) { deviceChart.dispose(); deviceChart = null; }
+      }
     }
 
     /* ── Clock ── */
@@ -1488,6 +1658,11 @@ const app = createApp({
       mapChart.on('click', (params) => {
         if (params.componentType === 'series' && params.seriesIndex === 7 && params.data.deviceIdx !== undefined) {
           const d = devices[params.data.deviceIdx];
+          // Auto-select device in detail panel
+          if (selectedDeviceId.value !== d.deviceId) {
+            selectedDeviceId.value = d.deviceId;
+            fetchDeviceRecords(d.deviceId);
+          }
           infobox.deviceId = d.deviceId;
           infobox.dimName = actDim ? actDim.title : '';
           infobox.rows = buildInfoRows(d);
@@ -1562,7 +1737,7 @@ const app = createApp({
       }
 
       const [profileRes, recordsRes, anomaliesRes] = await Promise.all([
-        fetchJSON(apiUrl('/../profile')),
+        fetchJSON(apiUrl('/../profile?source=mongo')),
         fetchJSON(apiUrl('/../records?source=mongo&limit=200')),
         fetchJSON(apiUrl('/../records?source=mysql&kind=anomalies&limit=100')),
       ]);
@@ -1586,11 +1761,13 @@ const app = createApp({
       if (profileDevices.length > 0) {
         for (const pd of profileDevices) {
           const deviceSn = pd.device_sn;
+          const petName = pd.pet_name || '';
           const latest = (telemetryMap[deviceSn] || []).slice(-1)[0] || {};
-          const lat = latest.gps_lat || (29.55 + Math.random() * 0.1);
-          const lng = latest.gps_lng || (106.45 + Math.random() * 0.08);
+          const lat = latest.gps_lat || pd.latest_gps_lat || (29.55 + Math.random() * 0.1);
+          const lng = latest.gps_lng || pd.latest_gps_lng || (106.45 + Math.random() * 0.08);
           devices.push({
             deviceId: deviceSn,
+            petName: petName,
             district: assignDistrict(lat, lng),
             dogSize: '中型犬',
             heartRate: latest.heart_rate || 80,
@@ -1613,6 +1790,7 @@ const app = createApp({
           const lng = latest.gps_lng || (106.45 + Math.random() * 0.08);
           devices.push({
             deviceId: did,
+            petName: '',
             district: assignDistrict(lat, lng),
             dogSize: '中型犬',
             heartRate: latest.heart_rate || 80,
@@ -1749,6 +1927,10 @@ const app = createApp({
 
       // Update map & charts
       renderMap();
+      // Refresh device detail panel if a device is selected
+      if (selectedDeviceId.value) {
+        fetchDeviceRecords(selectedDeviceId.value);
+      }
       for (const idx of activePanel.value) {
         renderPanelChart(idx);
       }
@@ -1777,11 +1959,12 @@ const app = createApp({
       // Initial data fetch
       await refreshAll();
 
-      // Poll every 10 seconds
-      refreshTimer = setInterval(refreshAll, 10000);
+      // Poll every 3 seconds for real-time sync with mini program
+      refreshTimer = setInterval(refreshAll, 3000);
 
       window.addEventListener('resize', () => {
         mapChart?.resize();
+        deviceChart?.resize();
         Object.values(panelCharts).forEach(c => c?.resize?.());
       });
       const mc = mapContainer.value;
@@ -1798,6 +1981,7 @@ const app = createApp({
       clearTimeout(curtainTimer);
       clearTimeout(hideInfoboxTimer);
       mapChart?.dispose();
+      deviceChart?.dispose();
       Object.values(panelCharts).forEach(c => c?.dispose?.());
       const mc = mapContainer.value;
       if (mc) mc.removeEventListener('mousedown', onMapMouseDown);
@@ -1809,7 +1993,10 @@ const app = createApp({
       dimensions, activePanel, mapContainer, curtainEl, infoboxEl, chatMessages,
       panelStatus, infobox, bgOffset, currentTime, chatInput, chatList,
       sendChat, setChartRef, onPanelChange, onTimeModeChange, onHistoricalModeChange, resetBgOffset, mapEditMode, onMapWheel, bgScale, exitDashboard,
-      backendConnected, backendChecking, liveDeviceCount,
+      backendConnected, backendChecking, liveDeviceCount, liveDevices,
+      selectedDeviceId, deviceDetail, deviceRecords, deviceLoading,
+      deviceChartDom, deviceBehavior,
+      hrColor, tempColor, rrColor, onDeviceChange,
     };
   },
 });
