@@ -979,26 +979,30 @@ const app = createApp({
       { type: 'system', text: '系统已启动，正在获取实时数据...' },
     ]);
 
-    function sendChat() {
+    async function sendChat() {
       const txt = chatInput.value.trim();
       if (!txt) return;
       chatList.push({ type: 'user', text: txt });
       chatInput.value = '';
-      const devs = liveDevices.value;
-      const anoms = devs.filter(d => d.anomaly !== '无异常');
-      const lines = [];
-      lines.push(`当前共监测 <em>${devs.length}</em> 台设备`);
-      if (devs.length > 0) {
-        const avgHr = (devs.reduce((s,d) => s+d.heartRate, 0) / devs.length).toFixed(0);
-        const avgTmp = (devs.reduce((s,d) => s+d.temperature, 0) / devs.length).toFixed(1);
-        lines.push(`平均心率 <em>${avgHr} bpm</em>，平均体温 <em>${avgTmp}°C</em>`);
+
+      // 思考中占位
+      const thinkIdx = chatList.length;
+      chatList.push({ type: 'system', text: '🤔 分析中，请稍候...' });
+      nextTick(() => scrollChat());
+
+      try {
+        const res = await fetch(API_BASE.replace(/\/v1$/, '') + '/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: txt }),
+        });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        let answerHtml = (data.answer || 'AI 未返回内容').replace(/\n/g, '<br>');
+        chatList[thinkIdx] = { type: 'system', text: answerHtml };
+      } catch (e) {
+        chatList[thinkIdx] = { type: 'system', text: '⚠️ AI 服务不可用: ' + e.message };
       }
-      if (anoms.length > 0) lines.push(`异常设备 <em>${anoms.length}</em> 台`);
-      else lines.push('当前 <em>无异常</em> 设备');
-      setTimeout(() => {
-        chatList.push({ type: 'system', text: lines.join(' · ') });
-        nextTick(() => scrollChat());
-      }, 400);
       nextTick(() => scrollChat());
     }
 

@@ -116,6 +116,7 @@ services:
       # API_KEY/HMAC_KEY 在 flask-server / mq-worker / engine 三处必须一致
       - API_KEY=${API_KEY}
       - HMAC_KEY=${HMAC_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/health')" ]
       interval: 10s                           # 每 10 秒检查一次
@@ -152,6 +153,7 @@ services:
       # API_KEY/HMAC_KEY 在 flask-server / mq-worker / engine 三处必须一致
       - API_KEY=${API_KEY}
       - HMAC_KEY=${HMAC_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - RABBITMQ_QUEUE=petnode.records
     depends_on:

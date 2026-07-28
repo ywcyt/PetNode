@@ -63,8 +63,10 @@ app.py —— PetNode S端 Flask 数据服务器
 
 import hashlib  # SHA-256 哈希算法（用于 HMAC 签名验证）
 import hmac  # HMAC 消息认证码（用于防篡改验签）
+import json  # JSON 序列化（DeepSeek API 调用等）
 import logging  # Python 标准日志库
 import os  # 读取环境变量
+import urllib.request  # HTTP 客户端（调用 DeepSeek API）
 from datetime import datetime  # 获取当前时间（用于日志）
 
 from flask import Flask, request, jsonify  # Flask 核心：应用、请求对象、JSON 响应
@@ -447,6 +449,290 @@ def health_check():
         "total_received": _total_received,  # 累计接收数据条数
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),  # 当前服务器时间
     }), 200  # HTTP 状态码 200 OK
+
+
+# ────────────────── AI Chat 端点 ──────────────────
+
+import uuid
+import time as _time
+
+def _chat_collection():
+    """获取 MongoDB 中的 chat 集合（延迟初始化，兼容 LazyProxy）。"""
+    try:
+        db = mongo_storage._collection.database
+        return db["chat_questions"]
+    except Exception:
+        # fallback: 通过 pymongo 直接连接
+        from pymongo import MongoClient
+        uri = os.environ.get("MONGO_URI", "mongodb://mongodb:27017")
+        db_name = os.environ.get("MONGO_DB", "petnode")
+        client = MongoClient(uri, serverSelectionTimeoutMS=3000)
+        return client[db_name]["chat_questions"]
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat_ask():
+    """
+    AI 智能问答 —— 接收问题，查询实时数据，调用 DeepSeek 返回分析结果。
+
+    POST /api/chat
+    Body: {"message": "哪些设备体温异常？"}
+
+    Returns: {"status": "ok", "answer": "...", "question_id": "..."}
+    """
+    import json as _json
+
+    body = request.get_json(silent=True)
+    if not body or not isinstance(body, dict):
+        return jsonify({"status": "error", "message": "请求体必须是 JSON 对象"}), 400
+
+    message = (body.get("message") or "").strip()
+    if not message:
+        return jsonify({"status": "error", "message": "message 不能为空"}), 400
+
+    # ── 1. 收集设备实时数据作为分析上下文 ──
+    data_context = _build_data_context()
+
+    # ── 2. 存入 MongoDB ──
+    qid = uuid.uuid4().hex[:12]
+    now_utc = datetime.utcnow().isoformat()
+    doc = {
+        "question_id": qid,
+        "message": message,
+        "answer": None,
+        "status": "pending",
+        "created_at": now_utc,
+        "answered_at": None,
+    }
+    try:
+        _chat_collection().insert_one(doc)
+    except Exception as exc:
+        logger.error("Chat 问题写入失败: %s", exc)
+
+    # ── 3. 调用 DeepSeek API ──
+    try:
+        answer = _call_deepseek(message, data_context)
+        # 更新 MongoDB
+        _chat_collection().update_one(
+            {"question_id": qid},
+            {"$set": {
+                "answer": answer,
+                "status": "answered",
+                "answered_at": datetime.utcnow().isoformat(),
+            }},
+        )
+        logger.info("Chat 已回复: qid=%s, len=%d", qid, len(answer))
+        return jsonify({
+            "status": "ok",
+            "question_id": qid,
+            "answer": answer,
+        }), 200
+    except Exception as exc:
+        logger.error("DeepSeek 调用失败: %s", exc)
+        error_msg = f"⚠️ AI 服务暂时不可用：{exc}"
+        _chat_collection().update_one(
+            {"question_id": qid},
+            {"$set": {
+                "answer": error_msg,
+                "status": "answered",
+                "answered_at": datetime.utcnow().isoformat(),
+            }},
+        )
+        return jsonify({
+            "status": "ok",
+            "question_id": qid,
+            "answer": error_msg,
+        }), 200
+
+
+def _build_data_context() -> str:
+    """从 MongoDB 提取设备实时数据，构建供 AI 分析的文本上下文。"""
+    try:
+        col = mongo_storage._collection
+        # 最近 200 条记录
+        records = list(col.find({}, {"_id": 0}).sort("_id", -1).limit(200))
+        if not records:
+            return "（暂无设备数据）"
+
+        from collections import defaultdict
+        devices = defaultdict(lambda: {
+            "hr": [], "tmp": [], "rr": [], "steps": 0, "bat": 0, "beh": "", "events": 0
+        })
+        for r in records:
+            d = devices[r["device_id"]]
+            d["hr"].append(r.get("heart_rate") or 0)
+            d["tmp"].append(r.get("temperature") or 0)
+            d["rr"].append(r.get("resp_rate") or 0)
+            d["steps"] = max(d["steps"], r.get("steps") or 0)
+            d["bat"] = r.get("battery") or 0
+            d["beh"] = r.get("behavior", "unknown") or "unknown"
+            if r.get("event"):
+                d["events"] += 1
+
+        lines = [f"当前共 {len(devices)} 台设备，最近 {len(records)} 条采样：\n"]
+        all_hr, all_tmp = [], []
+        for did in sorted(devices.keys()):
+            d = devices[did]
+            n = len(d["hr"])
+            avg_hr = sum(d["hr"]) / n
+            avg_tmp = sum(d["tmp"]) / n
+            avg_rr = sum(d["rr"]) / n
+            all_hr.extend(d["hr"])
+            all_tmp.extend(d["tmp"])
+            alerts = []
+            if avg_tmp > 39.5: alerts.append("发热")
+            if max(d["tmp"]) > 41: alerts.append("高温峰值!")
+            if avg_hr > 130: alerts.append("心率过高")
+            if avg_hr < 65: alerts.append("心率过低")
+            status = ", ".join(alerts) if alerts else "正常"
+            lines.append(
+                f"  {did}: 均心率{avg_hr:.0f}bpm, 均体温{avg_tmp:.1f}°C(峰值{max(d['tmp']):.1f}), "
+                f"均呼吸{avg_rr:.0f}次/分, 步数{d['steps']}, 电量{d['bat']}%, "
+                f"行为{d['beh']}, 事件{d['events']}次 → {status}"
+            )
+        lines.append(f"\n全局: 心率{sum(all_hr)/len(all_hr):.0f}({min(all_hr)}-{max(all_hr)})bpm, "
+                      f"体温{sum(all_tmp)/len(all_tmp):.1f}({min(all_tmp):.1f}-{max(all_tmp):.1f})°C")
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.warning("构建数据上下文失败: %s", exc)
+        return f"（数据查询异常: {exc}）"
+
+
+def _call_deepseek(question: str, data_context: str) -> str:
+    """调用 DeepSeek API 进行数据分析。"""
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("未配置 DEEPSEEK_API_KEY")
+
+    system_prompt = (
+        "你是 PetNode 宠物健康监测系统的 AI 分析师。"
+        "根据提供的设备实时遥测数据，回答用户关于宠物（狗）健康状态的问题。"
+        "分析要点：心率、体温、呼吸频率、行为模式、异常事件、设备电量。"
+        "回答简洁专业，用中文，可用 Markdown 格式。"
+        "体温 > 39.5°C 为发热，心率 > 130 或 < 60 需关注，呼吸 > 35 需关注。"
+        "若数据不足以判断，请诚实说明。"
+    )
+
+    payload = json.dumps({
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"实时遥测数据：\n\n{data_context}\n\n用户问题：{question}\n\n请分析并回答。"},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1024,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.deepseek.com/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    resp = urllib.request.urlopen(req, timeout=30)
+    result = json.loads(resp.read().decode("utf-8"))
+    return result["choices"][0]["message"]["content"]
+
+
+@app.route("/api/chat", methods=["GET"])
+def chat_poll():
+    """
+    轮询答案。
+
+    GET /api/chat?qid=<question_id>
+    GET /api/chat?qid=latest  → 返回最新答案
+
+    Returns: {"status": "pending"} 或 {"status": "ok", "answer": "...", "analysis": {...}}
+    """
+    qid = request.args.get("qid", "").strip()
+    col = _chat_collection()
+    if qid == "latest":
+        doc = col.find_one({"status": "answered"}, sort=[("answered_at", -1)])
+    else:
+        if not qid:
+            return jsonify({"status": "error", "message": "qid 参数必填"}), 400
+        doc = col.find_one({"question_id": qid})
+
+    if not doc:
+        return jsonify({"status": "error", "message": "问题不存在"}), 404
+
+    if doc["status"] == "pending":
+        return jsonify({"question_id": doc["question_id"], "status": "pending"}), 200
+
+    return jsonify({
+        "question_id": doc["question_id"],
+        "status": "ok",
+        "question": doc["message"],
+        "answer": doc["answer"],
+        "analysis": doc.get("analysis"),
+        "created_at": doc["created_at"],
+        "answered_at": doc.get("answered_at"),
+    }), 200
+
+
+@app.route("/api/chat/pending", methods=["GET"])
+def chat_pending():
+    """
+    返回所有待处理问题（供 AI 终端调用）。
+
+    GET /api/chat/pending
+
+    Returns: {"pending": [{"question_id": "...", "message": "...", "created_at": "..."}]}
+    """
+    col = _chat_collection()
+    docs = list(col.find({"status": "pending"}, sort=[("created_at", 1)]).limit(20))
+    pending = [{
+        "question_id": d["question_id"],
+        "message": d["message"],
+        "created_at": d["created_at"],
+    } for d in docs]
+    return jsonify({"pending": pending, "count": len(pending)}), 200
+
+
+@app.route("/api/chat/answer", methods=["GET", "POST"])
+def chat_answer():
+    """
+    AI 写回答案（由运维端 AI 脚本调用）。
+    支持 GET（Cloudflare 友好）和 POST 两种方式。
+
+    GET  /api/chat/answer?qid=...&answer=...
+    POST /api/chat/answer  Body: {"question_id": "...", "answer": "..."}
+    """
+    if request.method == "GET":
+        qid = (request.args.get("qid") or "").strip()
+        answer = (request.args.get("answer") or "").strip()
+        analysis = None
+    else:
+        body = request.get_json(silent=True)
+        if not body or not isinstance(body, dict):
+            return jsonify({"status": "error", "message": "请求体必须是 JSON 对象"}), 400
+        qid = (body.get("question_id") or "").strip()
+        answer = (body.get("answer") or "").strip()
+        analysis = body.get("analysis")
+
+    if not qid:
+        return jsonify({"status": "error", "message": "question_id 必填"}), 400
+    if not answer:
+        return jsonify({"status": "error", "message": "answer 不能为空"}), 400
+
+    col = _chat_collection()
+    result = col.update_one(
+        {"question_id": qid, "status": "pending"},
+        {"$set": {
+            "answer": answer,
+            "analysis": analysis,
+            "status": "answered",
+            "answered_at": datetime.utcnow().isoformat(),
+        }},
+    )
+    if result.matched_count == 0:
+        return jsonify({"status": "error", "message": "问题不存在或已处理"}), 404
+
+    logger.info("Chat 答案已写回: qid=%s, len=%d", qid, len(answer))
+    return jsonify({"status": "ok", "message": "答案已更新"}), 200
 
 
 @app.route("/api/records", methods=["GET"])
